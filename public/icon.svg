@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Road Endurance">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#102847"/>
+      <stop offset="1" stop-color="#05080c"/>
+    </linearGradient>
+    <linearGradient id="road" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#47505a"/>
+      <stop offset="1" stop-color="#11161c"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#sky)"/>
+  <circle cx="256" cy="158" r="62" fill="#ffb45b" opacity=".9"/>
+  <path d="M210 210h92l154 302H56z" fill="url(#road)"/>
+  <path d="M248 224h16l26 288h-68z" fill="#f5ead6" opacity=".9"/>
+  <path d="M138 344h236l40 105H98z" fill="#08b7dd"/>
+  <path d="M174 322h164l36 92H138z" fill="#17212b" stroke="#84efff" stroke-width="12"/>
+  <rect x="151" y="382" width="66" height="28" rx="10" fill="#ff465e"/>
+  <rect x="295" y="382" width="66" height="28" rx="10" fill="#ff465e"/>
+</svg>
