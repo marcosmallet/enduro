@@ -101,6 +101,20 @@ Essa configuração troca nome, subtítulo, aviso, cores, metadados e manifest, 
 
 A build registra um service worker automaticamente. Depois de abrir a build de produção uma vez, use o botão **Instalar** quando ele aparecer ou a opção **Instalar aplicativo** do navegador. Os arquivos essenciais ficam em cache para inicialização offline.
 
+## Publicação no GitHub Pages
+
+O projeto já inclui um workflow em `.github/workflows/deploy-pages.yml` que:
+
+- instala dependências com `npm ci`;
+- gera a build pública com `VITE_BRAND_MODE=ORIGINAL_PUBLIC_BUILD`;
+- publica a pasta `dist/` para o GitHub Pages.
+
+Para ativar, basta:
+
+1. subir o workflow para o repositório;
+2. habilitar o GitHub Pages em `Settings > Pages` com o modo `GitHub Actions`;
+3. confirmar que a branch padrão é `main` ou `master`.
+
 ## Estado do projeto
 
 Consulte `PLAN.md`, `ART_DIRECTION.md` e `FIDELITY_CHECKLIST.md`. A POC está concluída até o Marco 6. As dez capturas finais em 1920 × 1080 ficam em `screenshots/milestone-6/`, e o registro consolidado de validação fica em `.logs/milestone-6.md`.

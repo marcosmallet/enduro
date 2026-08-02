@@ -5,8 +5,15 @@ import { BRANDING_PRESETS, normalizeBrandMode } from './src/config/branding.js';
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', 'VITE_');
   const brand = BRANDING_PRESETS[normalizeBrandMode(env.VITE_BRAND_MODE)];
+  const processEnv = (globalThis as typeof globalThis & {
+    process?: { env?: Record<string, string | undefined> };
+  }).process?.env ?? {};
+  const repositoryName = processEnv.GITHUB_REPOSITORY?.split('/')[1] ?? '';
+  const isGitHubPages = processEnv.GITHUB_ACTIONS === 'true' && Boolean(repositoryName);
+  const base = isGitHubPages ? `/${repositoryName}/` : '/';
 
   return {
+    base,
     plugins: [
       {
         name: 'brand-html',
