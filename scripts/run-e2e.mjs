@@ -10,14 +10,23 @@ const server = await createServer({
 });
 
 let playwright;
+const requestedArguments = process.argv.slice(2);
+const updateCanonicalScreenshots = requestedArguments.includes('--update-canonical');
+const playwrightArguments = requestedArguments.filter(
+  (argument) => argument !== '--update-canonical',
+);
 
 try {
   await server.listen();
   playwright = spawn(
     process.execPath,
-    ['node_modules/@playwright/test/cli.js', 'test', ...process.argv.slice(2)],
+    ['node_modules/@playwright/test/cli.js', 'test', ...playwrightArguments],
     {
-      env: { ...process.env, PLAYWRIGHT_EXTERNAL_SERVER: '1' },
+      env: {
+        ...process.env,
+        PLAYWRIGHT_EXTERNAL_SERVER: '1',
+        UPDATE_CANONICAL_SCREENSHOTS: updateCanonicalScreenshots ? '1' : '0',
+      },
       stdio: 'inherit',
       windowsHide: true,
     },

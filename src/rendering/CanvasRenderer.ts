@@ -13,6 +13,9 @@ import { mixSceneColor, scenePaletteForPhase } from './palette';
 import { projectRoadPoint } from './projection';
 import { legacyRenderSize, type VisualMode } from './visualModes';
 
+const PLAYER_VISUAL_WIDTH = 160;
+const PLAYER_VISUAL_HEIGHT = 94;
+
 function roundedRect(
   context: CanvasRenderingContext2D,
   x: number,
@@ -95,13 +98,15 @@ export class CanvasRenderer {
     const visibleTraffic = candidates.slice(-this.graphics.maxVisibleTraffic);
     this.canvas.dataset.visibleTraffic = String(visibleTraffic.length);
     let detailedNearVehicles = 0;
+    let nearestTrafficWidth = 0;
     for (const vehicle of visibleTraffic) {
       const near = vehicle.z < 62;
       const detailed = !near || detailedNearVehicles < this.graphics.highDetailVehicles;
       if (near && detailed) detailedNearVehicles += 1;
-      this.drawTrafficVehicle(state, vehicle, detailed);
+      nearestTrafficWidth = this.drawTrafficVehicle(state, vehicle, detailed);
     }
     this.canvas.dataset.highDetailVehicles = String(detailedNearVehicles);
+    this.canvas.dataset.nearestTrafficWidth = nearestTrafficWidth.toFixed(1);
 
     this.drawFog(state);
     this.drawPlayer(state, timeSeconds);
@@ -315,7 +320,7 @@ export class CanvasRenderer {
     }
   }
 
-  private drawTrafficVehicle(state: GameState, vehicle: TrafficVehicle, detailed: boolean): void {
+  private drawTrafficVehicle(state: GameState, vehicle: TrafficVehicle, detailed: boolean): number {
     const ctx = this.context;
     const point = projectRoadPoint(vehicle.z, vehicle.lateral, state.distanceMeters);
     const kindScale = vehicle.kind === 'TRUCK' ? 1.32 : vehicle.kind === 'VAN' ? 1.15 : 1;
@@ -375,7 +380,7 @@ export class CanvasRenderer {
       ctx.fillRect(x + width * 0.12, lightY, lightWidth, lightHeight);
       ctx.fillRect(x + width * (isTruck ? 0.75 : 0.7), lightY, lightWidth, lightHeight);
       ctx.restore();
-      return;
+      return width;
     }
 
     roundedRect(ctx, x, y + height * 0.22, width, height * 0.74, Math.max(1, width * 0.13));
@@ -405,6 +410,7 @@ export class CanvasRenderer {
       ctx.fillRect(x + width * 0.71, y + height * 0.65, lightWidth, lightHeight);
     }
     ctx.restore();
+    return width;
   }
 
   private trafficColorFilter(color: string): string {
@@ -427,16 +433,17 @@ export class CanvasRenderer {
     const collisionKick = state.collisionFlash > 0 ? Math.sin(timeSeconds * 80) * 6 : 0;
     const centerX = road.x + collisionKick;
     const baseY = LOGICAL_HEIGHT - 34 + vibration;
-    const width = 190;
-    const height = 112;
+    const width = PLAYER_VISUAL_WIDTH;
+    const height = PLAYER_VISUAL_HEIGHT;
     const x = centerX - width / 2;
     const y = baseY - height;
+    this.canvas.dataset.playerVisualWidth = String(PLAYER_VISUAL_WIDTH);
 
     ctx.save();
     if (this.graphics.shadows) {
       ctx.fillStyle = 'rgba(0,0,0,.48)';
       ctx.beginPath();
-      ctx.ellipse(centerX, baseY - 2, width * 0.57, 19, 0, 0, Math.PI * 2);
+      ctx.ellipse(centerX, baseY - 2, width * 0.57, height * 0.17, 0, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -448,7 +455,7 @@ export class CanvasRenderer {
           : 'playerCenter';
     const playerAsset = this.legacyAmount < 0.62 ? this.assets.get(pose) : undefined;
     if (playerAsset) {
-      const assetWidth = 218;
+      const assetWidth = PLAYER_VISUAL_WIDTH;
       const assetHeight = assetWidth * (playerAsset.naturalHeight / playerAsset.naturalWidth);
       ctx.translate(centerX, baseY);
       if (state.collisionFlash > 0) {
@@ -460,10 +467,13 @@ export class CanvasRenderer {
       ctx.filter = 'none';
       if (isNight) {
         ctx.shadowColor = '#ff2048';
-        ctx.shadowBlur = 15;
+        ctx.shadowBlur = assetWidth * 0.069;
         ctx.fillStyle = '#ff3155';
-        ctx.fillRect(-76, -46, 43, 9);
-        ctx.fillRect(33, -46, 43, 9);
+        const lightWidth = assetWidth * 0.197;
+        const lightHeight = assetWidth * 0.041;
+        const lightY = -assetHeight * 0.37;
+        ctx.fillRect(-assetWidth * 0.349, lightY, lightWidth, lightHeight);
+        ctx.fillRect(assetWidth * 0.151, lightY, lightWidth, lightHeight);
       }
       ctx.restore();
       return;
@@ -475,33 +485,33 @@ export class CanvasRenderer {
     bodyGradient.addColorStop(1, '#075b78');
     ctx.fillStyle = bodyGradient;
     ctx.beginPath();
-    ctx.moveTo(x + 8, baseY - 18);
-    ctx.lineTo(x + 26, y + 34);
-    ctx.quadraticCurveTo(centerX, y - 3, x + width - 26, y + 34);
-    ctx.lineTo(x + width - 8, baseY - 18);
-    ctx.quadraticCurveTo(centerX, baseY + 5, x + 8, baseY - 18);
+    ctx.moveTo(x + width * 0.042, baseY - height * 0.161);
+    ctx.lineTo(x + width * 0.137, y + height * 0.304);
+    ctx.quadraticCurveTo(centerX, y - height * 0.027, x + width * 0.863, y + height * 0.304);
+    ctx.lineTo(x + width * 0.958, baseY - height * 0.161);
+    ctx.quadraticCurveTo(centerX, baseY + height * 0.045, x + width * 0.042, baseY - height * 0.161);
     ctx.closePath();
     ctx.fill();
 
     ctx.fillStyle = '#111a23';
     ctx.beginPath();
-    ctx.moveTo(x + 48, y + 39);
-    ctx.quadraticCurveTo(centerX, y + 10, x + width - 48, y + 39);
-    ctx.lineTo(x + width - 33, y + 65);
-    ctx.lineTo(x + 33, y + 65);
+    ctx.moveTo(x + width * 0.253, y + height * 0.348);
+    ctx.quadraticCurveTo(centerX, y + height * 0.089, x + width * 0.747, y + height * 0.348);
+    ctx.lineTo(x + width * 0.826, y + height * 0.58);
+    ctx.lineTo(x + width * 0.174, y + height * 0.58);
     ctx.closePath();
     ctx.fill();
 
     ctx.fillStyle = '#ff3656';
-    roundedRect(ctx, x + 24, baseY - 41, 42, 15, 5);
+    roundedRect(ctx, x + width * 0.126, baseY - height * 0.366, width * 0.221, height * 0.134, width * 0.026);
     ctx.fill();
-    roundedRect(ctx, x + width - 66, baseY - 41, 42, 15, 5);
+    roundedRect(ctx, x + width * 0.653, baseY - height * 0.366, width * 0.221, height * 0.134, width * 0.026);
     ctx.fill();
     ctx.fillStyle = '#d8f7ff';
-    ctx.fillRect(centerX - 19, baseY - 28, 38, 5);
+    ctx.fillRect(centerX - width * 0.1, baseY - height * 0.25, width * 0.2, height * 0.045);
     ctx.fillStyle = '#05080b';
-    ctx.fillRect(x + 3, baseY - 31, 18, 27);
-    ctx.fillRect(x + width - 21, baseY - 31, 18, 27);
+    ctx.fillRect(x + width * 0.016, baseY - height * 0.277, width * 0.095, height * 0.241);
+    ctx.fillRect(x + width * 0.889, baseY - height * 0.277, width * 0.095, height * 0.241);
     ctx.restore();
   }
 

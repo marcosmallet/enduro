@@ -14,6 +14,8 @@ export const GAME_RULES = {
   brakingKphPerSecond: 142,
   rollingResistanceKphPerSecond: 19,
   collisionSpeedMultiplier: 0.43,
+  collisionLateralRegular: 0.2,
+  collisionLateralLarge: 0.23,
   playerRoadLimit: 0.88,
   newDayFeedbackSeconds: 2.4,
 } as const;

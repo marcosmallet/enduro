@@ -95,6 +95,7 @@ Essa configuração troca nome, subtítulo, aviso, cores, metadados e manifest, 
 - `npm run lint` — ESLint.
 - `npm run test` — Vitest.
 - `npm run test:e2e` — Playwright em desktop 1280 × 720, desktop 1920 × 1080, celular horizontal e celular vertical; o servidor de teste abre e fecha automaticamente.
+- `npm run test:e2e:screenshots` — recaptura deliberadamente as dez imagens canônicas em `screenshots/milestone-6/`.
 - `npm run check` — lint, testes unitários e build.
 
 ## PWA e uso offline

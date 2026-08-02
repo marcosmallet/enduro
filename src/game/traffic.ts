@@ -1,4 +1,4 @@
-import { ROAD_VISIBLE_DISTANCE } from '../config/game';
+import { GAME_RULES, ROAD_VISIBLE_DISTANCE } from '../config/game';
 import { difficultyForDay } from './difficulty';
 import { applyCollisionPenalty } from './physics';
 import type { GameState, TrafficVehicle, VehicleKind } from './types';
@@ -110,7 +110,10 @@ export function updateTraffic(
     if (
       vehicle.z > 2 &&
       vehicle.z < 13 &&
-      Math.abs(vehicle.lateral - state.playerX) < (vehicle.kind === 'TRUCK' ? 0.27 : 0.21) &&
+      Math.abs(vehicle.lateral - state.playerX) <
+        (vehicle.kind === 'TRUCK' || vehicle.kind === 'VAN'
+          ? GAME_RULES.collisionLateralLarge
+          : GAME_RULES.collisionLateralRegular) &&
       state.collisionCooldown === 0
     ) {
       applyCollisionPenalty(state);

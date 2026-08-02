@@ -1,6 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
 import type { TestContract } from '../../src/GameController';
 
+const runtimeEnvironment = (
+  globalThis as typeof globalThis & {
+    process?: { env?: Record<string, string | undefined> };
+  }
+).process?.env;
+
 type CanonicalScene =
   | 'dawn'
   | 'day'
@@ -155,6 +161,32 @@ test.describe('Milestone 6 optimization and final validation', () => {
     await expect(page.locator('#game-canvas')).toHaveAttribute('height', '720');
   });
 
+  test('keeps the player car proportional to nearby traffic', async ({ page }, testInfo) => {
+    await page.evaluate(() => {
+      const contract = (window as Window & { __roadEnduranceTest?: TestContract })
+        .__roadEnduranceTest;
+      if (!contract) throw new Error('Test contract was not installed.');
+      contract.start('POC_QUICK_RACE');
+      contract.placeVehicle({ z: 7, lateral: 0.62, speedKph: 0 });
+      contract.step(1 / 120);
+    });
+
+    const scale = await page.locator('#game-canvas').evaluate((element) => ({
+      player: Number((element as HTMLCanvasElement).dataset.playerVisualWidth),
+      nearestTraffic: Number((element as HTMLCanvasElement).dataset.nearestTrafficWidth),
+    }));
+    expect(scale.player).toBe(160);
+    expect(scale.nearestTraffic).toBeGreaterThan(75);
+    expect(scale.player / scale.nearestTraffic).toBeLessThan(2.1);
+    if (
+      testInfo.project.name === 'desktop-720p' ||
+      testInfo.project.name === 'mobile-landscape' ||
+      testInfo.project.name === 'mobile-portrait'
+    ) {
+      await page.screenshot({ path: `.logs/player-scale-${testInfo.project.name}.png` });
+    }
+  });
+
   test('captures the ten canonical fidelity scenes', async ({ page }, testInfo) => {
     if (testInfo.project.name !== 'desktop-1080p') {
       await expect(page.locator('.build-tag')).toHaveText('M6 · FINAL POC');
@@ -175,8 +207,12 @@ test.describe('Milestone 6 optimization and final validation', () => {
     ];
     for (const [index, scene] of scenes.entries()) {
       await setCanonicalScene(page, scene);
+      const filename = `${String(index + 1).padStart(2, '0')}-${scene}-1920x1080.png`;
       await page.screenshot({
-        path: `screenshots/milestone-6/${String(index + 1).padStart(2, '0')}-${scene}-1920x1080.png`,
+        path:
+          runtimeEnvironment?.UPDATE_CANONICAL_SCREENSHOTS === '1'
+            ? `screenshots/milestone-6/${filename}`
+            : testInfo.outputPath(filename),
       });
     }
 
