@@ -138,6 +138,16 @@ export class CanvasRenderer {
     this.canvas.dataset.highDetailVehicles = String(detailedNearVehicles);
     this.canvas.dataset.nearestTrafficWidth = nearestTrafficWidth.toFixed(1);
     this.drawFog(state);
+    let telegraphCueCount = 0;
+    let maxTelegraphCuePixels = 0;
+    for (const vehicle of visibleTraffic) {
+      const displacement = this.drawTrafficTelegraphCue(state, vehicle);
+      if (displacement <= 0) continue;
+      telegraphCueCount += 1;
+      maxTelegraphCuePixels = Math.max(maxTelegraphCuePixels, displacement);
+    }
+    this.canvas.dataset.trafficTelegraphCues = String(telegraphCueCount);
+    this.canvas.dataset.trafficTelegraphMaxCuePixels = maxTelegraphCuePixels.toFixed(1);
     ctx.restore();
 
     this.drawPlayer(state, camera);
@@ -374,6 +384,50 @@ export class CanvasRenderer {
     }
     ctx.restore();
     return width;
+  }
+
+  private drawTrafficTelegraphCue(state: GameState, vehicle: TrafficVehicle): number {
+    if (
+      vehicle.maneuverPhase !== 'TELEGRAPH' ||
+      vehicle.maneuverTargetLane === undefined ||
+      vehicle.z < 20 ||
+      vehicle.z > 135
+    ) {
+      return 0;
+    }
+
+    const origin = projectRoadPoint(vehicle.z, vehicle.lateral, state.distanceMeters);
+    const target = projectRoadPoint(vehicle.z, vehicle.maneuverTargetLane, state.distanceMeters);
+    const displacement = Math.abs(target.x - origin.x);
+    if (displacement < 1) return 0;
+
+    const direction = target.x > origin.x ? 1 : -1;
+    const progress = Math.max(0, Math.min(1, vehicle.maneuverProgress ?? 0));
+    const size = Math.max(5, Math.min(15, origin.scale * 24));
+    const anchorX = origin.x + direction * (size * 1.05 + 5);
+    const anchorY = origin.y - Math.max(8, origin.scale * 46);
+    const ctx = this.context;
+
+    ctx.save();
+    ctx.globalAlpha = 0.58 + progress * 0.42;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (let index = 0; index < 2; index += 1) {
+      const tipX = anchorX + direction * index * size * 0.52;
+      const tailX = tipX - direction * size * 0.68;
+      ctx.beginPath();
+      ctx.moveTo(tailX, anchorY - size * 0.42);
+      ctx.lineTo(tipX, anchorY);
+      ctx.lineTo(tailX, anchorY + size * 0.42);
+      ctx.strokeStyle = '#071017';
+      ctx.lineWidth = Math.max(3, size * 0.42);
+      ctx.stroke();
+      ctx.strokeStyle = '#f4fbff';
+      ctx.lineWidth = Math.max(1.4, size * 0.18);
+      ctx.stroke();
+    }
+    ctx.restore();
+    return displacement;
   }
 
   private trafficColorFilter(color: string): string {
