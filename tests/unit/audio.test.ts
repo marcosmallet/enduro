@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  advanceAudioLoadReference,
   audioCuesBetween,
   continuousAudioMix,
   deriveEngineLoad,
   type AudioSnapshot,
+  type ContinuousAudioMix,
 } from '../../src/audio/audioModel';
 
 function snapshot(overrides: Partial<AudioSnapshot> = {}): AudioSnapshot {
@@ -19,6 +21,34 @@ function snapshot(overrides: Partial<AudioSnapshot> = {}): AudioSnapshot {
     screen: 'PLAYING',
     ...overrides,
   };
+}
+
+function speedForTrajectory(timeSeconds: number): number {
+  if (timeSeconds <= 1) return 60 + timeSeconds * 60;
+  if (timeSeconds <= 2) return 120;
+  return Math.max(75, 120 - (timeSeconds - 2) * 45);
+}
+
+function sampleMixAtRenderCadence(renderHz: number): Map<string, ContinuousAudioMix> {
+  let previousRender = snapshot({ speedKph: 60, elapsedSeconds: 0 });
+  let loadReference: AudioSnapshot | undefined;
+  const mixes = new Map<string, ContinuousAudioMix>();
+  const frameCount = Math.ceil(renderHz * 3);
+
+  for (let frame = 1; frame <= frameCount; frame += 1) {
+    const renderTime = frame / renderHz;
+    const simulationStep = Math.floor(renderTime * 60 + 1e-7);
+    const simulationTime = simulationStep / 60;
+    const current = snapshot({
+      speedKph: speedForTrajectory(simulationTime),
+      elapsedSeconds: simulationTime,
+    });
+    loadReference = advanceAudioLoadReference(current, previousRender, loadReference);
+    mixes.set(simulationTime.toFixed(4), continuousAudioMix(current, loadReference));
+    previousRender = current;
+  }
+
+  return mixes;
 }
 
 describe('procedural audio model', () => {
@@ -49,6 +79,53 @@ describe('procedural audio model', () => {
     expect(coastMix.engineLoad).toBeGreaterThan(brakingMix.engineLoad);
     expect(loadedMix.engineFrequency).toBeGreaterThan(coastMix.engineFrequency);
     expect(loadedMix.engineGain).toBeGreaterThan(coastMix.engineGain);
+  });
+
+  it('keeps the last distinct simulation reference across repeated render snapshots', () => {
+    const beforeStep = snapshot({ speedKph: 100, elapsedSeconds: 1 });
+    const afterStep = snapshot({ speedKph: 101, elapsedSeconds: 1 + 1 / 60 });
+    let reference = advanceAudioLoadReference(afterStep, beforeStep, undefined);
+    const firstMix = continuousAudioMix(afterStep, reference);
+
+    reference = advanceAudioLoadReference(afterStep, afterStep, reference);
+    const repeatedMix = continuousAudioMix(afterStep, reference);
+
+    expect(reference).toBe(beforeStep);
+    expect(firstMix.engineLoad).toBeGreaterThan(0.38);
+    expect(repeatedMix.engineLoad).toBeCloseTo(firstMix.engineLoad, 8);
+    expect(repeatedMix.engineFrequency).toBeCloseTo(firstMix.engineFrequency, 8);
+    expect(repeatedMix.engineGain).toBeCloseTo(firstMix.engineGain, 8);
+  });
+
+  it('keeps the engine-load envelope materially equivalent at 30, 60 and 120 Hz', () => {
+    const mixes30 = sampleMixAtRenderCadence(30);
+    const mixes60 = sampleMixAtRenderCadence(60);
+    const mixes120 = sampleMixAtRenderCadence(120);
+
+    for (const [time, mix30] of mixes30) {
+      const mix60 = mixes60.get(time);
+      const mix120 = mixes120.get(time);
+      expect(mix60, `missing 60 Hz sample at ${time}s`).toBeDefined();
+      expect(mix120, `missing 120 Hz sample at ${time}s`).toBeDefined();
+      if (!mix60 || !mix120) continue;
+
+      expect(mix60.engineLoad).toBeCloseTo(mix30.engineLoad, 6);
+      expect(mix120.engineLoad).toBeCloseTo(mix30.engineLoad, 6);
+      expect(mix60.engineFrequency).toBeCloseTo(mix30.engineFrequency, 6);
+      expect(mix120.engineFrequency).toBeCloseTo(mix30.engineFrequency, 6);
+      expect(mix60.engineGain).toBeCloseTo(mix30.engineGain, 6);
+      expect(mix120.engineGain).toBeCloseTo(mix30.engineGain, 6);
+    }
+
+    const accelerating = mixes120.get('0.5000');
+    const cruising = mixes120.get('1.5000');
+    const decelerating = mixes120.get('2.5000');
+    expect(accelerating).toBeDefined();
+    expect(cruising).toBeDefined();
+    expect(decelerating).toBeDefined();
+    if (!accelerating || !cruising || !decelerating) return;
+    expect(accelerating.engineLoad).toBeGreaterThan(cruising.engineLoad);
+    expect(cruising.engineLoad).toBeGreaterThan(decelerating.engineLoad);
   });
 
   it('keeps continuous mix values bounded across extreme snapshots', () => {
