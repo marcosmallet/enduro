@@ -1,7 +1,7 @@
 export function createGameMarkup(): string {
   return `
     <main class="game-shell" data-visual-mode="HYPER">
-      <canvas id="game-canvas" aria-label="Estrada de corrida vista por trás do carro"></canvas>
+      <canvas id="game-canvas" tabindex="-1" aria-label="Estrada de corrida vista por trás do carro"></canvas>
       <div class="vignette" aria-hidden="true"></div>
       <div class="film-grain" aria-hidden="true"></div>
 
@@ -93,7 +93,7 @@ export function createGameMarkup(): string {
         </style>
       </section>
 
-      <section class="modal pause-modal" hidden aria-labelledby="pause-title" role="status" aria-live="polite" aria-atomic="true">
+      <section class="modal pause-modal" hidden aria-labelledby="pause-title" role="dialog" aria-modal="true">
         <span class="modal-kicker">SYSTEM / HOLD</span>
         <h2 id="pause-title" data-i18n="paused"></h2>
         <div class="modal-actions">
@@ -104,10 +104,10 @@ export function createGameMarkup(): string {
         </div>
       </section>
 
-      <section class="modal result-modal" hidden aria-labelledby="result-title" role="status" aria-live="polite" aria-atomic="true">
+      <section class="modal result-modal" hidden aria-labelledby="result-title" aria-describedby="result-summary" role="dialog" aria-modal="true">
         <span class="modal-kicker" data-result="kicker">RUN COMPLETE</span>
         <h2 id="result-title" data-result="title"></h2>
-        <p data-result="summary"></p>
+        <p id="result-summary" data-result="summary"></p>
         <div class="modal-actions">
           <button type="button" data-action="restart" data-i18n="restart"></button>
           <button type="button" data-action="menu" data-i18n="menu"></button>
