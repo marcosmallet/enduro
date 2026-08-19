@@ -80,9 +80,17 @@ export function createGameMarkup(): string {
               <option value="HIGH">HIGH</option>
             </select>
           </label>
-          <span class="controls-hint" data-i18n="controls"></span>
+          <span class="controls-hint controls-hint-desktop" data-i18n="controls"></span>
+          <span class="controls-hint controls-hint-touch" data-i18n="controlsTouch"></span>
           <span class="build-tag">M6 · FINAL POC</span>
         </div>
+        <style>
+          .controls-hint-touch { display: none; }
+          @media (pointer: coarse) {
+            .controls-hint-desktop { display: none; }
+            .controls-hint-touch { display: inline; }
+          }
+        </style>
       </section>
 
       <section class="modal pause-modal" hidden aria-labelledby="pause-title">
@@ -97,7 +105,7 @@ export function createGameMarkup(): string {
       </section>
 
       <section class="modal result-modal" hidden aria-labelledby="result-title">
-        <span class="modal-kicker" data-result="kicker">RUN COMPLETE</span>
+        <span class="modal-kicker">RUN COMPLETE</span>
         <h2 id="result-title" data-result="title"></h2>
         <p data-result="summary"></p>
         <div class="modal-actions">
