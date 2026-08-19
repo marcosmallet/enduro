@@ -51,6 +51,18 @@ export function snapshotAudioState(state: GameState): AudioSnapshot {
   };
 }
 
+export function advanceAudioLoadReference(
+  current: AudioSnapshot,
+  previousRender: AudioSnapshot | undefined,
+  currentReference: AudioSnapshot | undefined,
+): AudioSnapshot | undefined {
+  if (!previousRender) return currentReference;
+  const deltaSeconds = current.elapsedSeconds - previousRender.elapsedSeconds;
+  return Number.isFinite(deltaSeconds) && deltaSeconds > 0.001
+    ? previousRender
+    : currentReference;
+}
+
 export function deriveEngineLoad(
   current: AudioSnapshot,
   previous?: AudioSnapshot,
