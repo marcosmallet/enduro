@@ -97,6 +97,44 @@ describe('procedural audio model', () => {
     expect(repeatedMix.engineGain).toBeCloseTo(firstMix.engineGain, 8);
   });
 
+  it('clears stale load history across menu, pause, resume and reset transitions', () => {
+    const menu = snapshot({ speedKph: 142, elapsedSeconds: 1, screen: 'PLAYING' });
+    const accelerating = snapshot({ speedKph: 170, elapsedSeconds: 1.25, screen: 'PLAYING' });
+    let reference = advanceAudioLoadReference(accelerating, menu, undefined);
+    const loaded = continuousAudioMix(accelerating, reference);
+    expect(loaded.engineLoad).toBeGreaterThan(0.38);
+
+    const paused = snapshot({
+      speedKph: 170,
+      elapsedSeconds: 1.25,
+      screen: 'PAUSED',
+      weather: 'FOG',
+    });
+    reference = advanceAudioLoadReference(paused, accelerating, reference, true);
+    const pausedMix = continuousAudioMix(paused, reference);
+    expect(reference).toBeUndefined();
+    expect(pausedMix.engineLoad).toBeCloseTo(0.38, 8);
+    expect(pausedMix.windGain).toBeLessThan(continuousAudioMix({ ...paused, weather: 'CLEAR' }).windGain);
+
+    const resumed = snapshot({
+      speedKph: 170,
+      elapsedSeconds: 1.25,
+      screen: 'PLAYING',
+      weather: 'FOG',
+    });
+    reference = advanceAudioLoadReference(resumed, paused, reference, true);
+    expect(reference).toBeUndefined();
+    expect(continuousAudioMix(resumed, reference).engineLoad).toBeCloseTo(0.38, 8);
+
+    const reset = snapshot({ speedKph: 0, elapsedSeconds: 0, screen: 'PLAYING' });
+    reference = advanceAudioLoadReference(reset, resumed, undefined, true);
+    const resetMix = continuousAudioMix(reset, reference);
+    expect(reference).toBeUndefined();
+    expect(resetMix.engineLoad).toBeCloseTo(0.16, 8);
+    expect(resetMix.windGain).toBe(0);
+    expect(resetMix.tireGain).toBe(0);
+  });
+
   it('keeps the engine-load envelope materially equivalent at 30, 60 and 120 Hz', () => {
     const mixes30 = sampleMixAtRenderCadence(30);
     const mixes60 = sampleMixAtRenderCadence(60);
