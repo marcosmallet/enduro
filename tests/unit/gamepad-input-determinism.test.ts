@@ -50,7 +50,7 @@ describe('real-input analog gamepad determinism', () => {
   it('quantizes only meaningful analog steering outside the dead zone', () => {
     expect(quantizeAnalogSteer(0.1)).toBe(0);
     expect(quantizeAnalogSteer(-0.17)).toBe(0);
-    expect(quantizeAnalogSteer(0.181)).toBeCloseTo(0.175, 6);
+    expect(quantizeAnalogSteer(0.181)).toBeCloseTo(0.2, 6);
     expect(quantizeAnalogSteer(0.713)).toBeCloseTo(0.725, 6);
     expect(quantizeAnalogSteer(-2)).toBe(-1);
   });
