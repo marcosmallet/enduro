@@ -79,6 +79,16 @@ export interface GameState {
   seed: number;
 }
 
+export interface SerializableTrafficManeuver {
+  id: string;
+  z: number;
+  lateral: number;
+  preferredLane: number;
+  maneuverPhase: TrafficManeuverPhase;
+  maneuverTargetLane: number | null;
+  maneuverProgress: number;
+}
+
 export interface SerializableGameState {
   screen: GameScreen;
   mode: GameMode;
@@ -103,6 +113,7 @@ export interface SerializableGameState {
   phaseProgress: number;
   dayProgress: number;
   trafficCount: number;
+  trafficManeuvers: SerializableTrafficManeuver[];
   collisionCount: number;
   goalReached: boolean;
   newDayFeedbackSeconds: number;

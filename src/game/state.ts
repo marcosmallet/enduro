@@ -102,6 +102,18 @@ export function serializeGameState(state: GameState): SerializableGameState {
     phaseProgress: Number(state.phaseProgress.toFixed(3)),
     dayProgress: Number(normalizedDayProgress(state).toFixed(3)),
     trafficCount: state.traffic.length,
+    trafficManeuvers: state.traffic.map((vehicle) => ({
+      id: vehicle.id,
+      z: Number(vehicle.z.toFixed(2)),
+      lateral: Number(vehicle.lateral.toFixed(4)),
+      preferredLane: Number(vehicle.preferredLane.toFixed(4)),
+      maneuverPhase: vehicle.maneuverPhase ?? 'IDLE',
+      maneuverTargetLane:
+        vehicle.maneuverTargetLane === undefined
+          ? null
+          : Number(vehicle.maneuverTargetLane.toFixed(4)),
+      maneuverProgress: Number((vehicle.maneuverProgress ?? 0).toFixed(3)),
+    })),
     collisionCount: state.collisionCount,
     goalReached: state.goalReached,
     newDayFeedbackSeconds: Number(state.newDayFeedbackSeconds.toFixed(2)),
