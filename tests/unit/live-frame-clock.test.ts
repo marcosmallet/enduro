@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-
-const controllerSource = readFileSync(new URL('../../src/GameController.ts', import.meta.url), 'utf8');
+import controllerSource from '../../src/GameController.ts?raw';
 
 describe('live RAF frame clock plumbing', () => {
   it('forwards the same RAF timestamp to gamepad polling and simulation updates', () => {
