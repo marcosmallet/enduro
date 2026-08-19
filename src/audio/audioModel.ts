@@ -10,6 +10,8 @@ export type AudioCue =
   | 'UI_MOVE'
   | 'UI_CONFIRM';
 
+export type AudioScene = 'MENU' | 'DRIVE' | 'PAUSED';
+
 export interface AudioSnapshot {
   speedKph: number;
   elapsedSeconds: number;
@@ -55,7 +57,9 @@ export function advanceAudioLoadReference(
   current: AudioSnapshot,
   previousRender: AudioSnapshot | undefined,
   currentReference: AudioSnapshot | undefined,
+  sceneChanged = false,
 ): AudioSnapshot | undefined {
+  if (sceneChanged) return undefined;
   if (!previousRender) return currentReference;
   const deltaSeconds = current.elapsedSeconds - previousRender.elapsedSeconds;
   return Number.isFinite(deltaSeconds) && deltaSeconds > 0.001
