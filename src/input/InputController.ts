@@ -35,6 +35,7 @@ interface NormalizedGamepad {
 }
 
 const DEAD_ZONE = 0.18;
+export const ANALOG_STEER_STEP = 0.025;
 
 function emptyDigitalInput(): DigitalInput {
   return { accelerate: false, brake: false, left: false, right: false };
@@ -42,6 +43,12 @@ function emptyDigitalInput(): DigitalInput {
 
 function pressed(button: GamepadButton | undefined): boolean {
   return Boolean(button?.pressed || (button?.value ?? 0) > 0.35);
+}
+
+export function quantizeAnalogSteer(value: number): number {
+  const clamped = Math.max(-1, Math.min(1, value));
+  if (Math.abs(clamped) < DEAD_ZONE) return 0;
+  return Math.max(-1, Math.min(1, Math.round(clamped / ANALOG_STEER_STEP) * ANALOG_STEER_STEP));
 }
 
 export class InputController {
@@ -75,7 +82,7 @@ export class InputController {
     });
   }
 
-  pollGamepad(): GamepadActions {
+  pollGamepad(nowMs = performance.now()): GamepadActions {
     this.gamepad = this.virtualGamepad
       ? this.normalizeVirtualGamepad(this.virtualGamepad)
       : this.readNativeGamepad();
@@ -83,7 +90,7 @@ export class InputController {
     const confirmPressed = this.gamepad.confirm && !this.previousConfirm;
     this.previousPause = this.gamepad.pause;
     this.previousConfirm = this.gamepad.confirm;
-    this.updateCombinedState();
+    this.updateCombinedState(nowMs);
     return {
       connected: this.gamepad.connected,
       label: this.gamepad.label,
@@ -109,6 +116,7 @@ export class InputController {
     this.gamepad = this.emptyGamepad();
     this.testInput = undefined;
     this.updateCombinedState();
+    this.state.changedAtMs = undefined;
   }
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
@@ -134,7 +142,7 @@ export class InputController {
     const pads = typeof navigator.getGamepads === 'function' ? navigator.getGamepads() : [];
     const pad = Array.from(pads).find((candidate): candidate is Gamepad => candidate?.connected === true);
     if (!pad) return this.emptyGamepad();
-    const analog = Math.abs(pad.axes[0] ?? 0) >= DEAD_ZONE ? (pad.axes[0] ?? 0) : 0;
+    const analog = quantizeAnalogSteer(pad.axes[0] ?? 0);
     const dpad = Number(pressed(pad.buttons[15])) - Number(pressed(pad.buttons[14]));
     return {
       connected: true,
@@ -151,7 +159,7 @@ export class InputController {
     return {
       connected: state.connected ?? true,
       label: state.label ?? 'TEST GAMEPAD',
-      steer: Math.max(-1, Math.min(1, state.steer ?? 0)),
+      steer: quantizeAnalogSteer(state.steer ?? 0),
       accelerate: state.accelerate ?? false,
       brake: state.brake ?? false,
       pause: state.pause ?? false,
@@ -159,7 +167,7 @@ export class InputController {
     };
   }
 
-  private updateCombinedState(): void {
+  private updateCombinedState(changedAtMs = performance.now()): void {
     const digitalSteer =
       Number(this.keyboard.right || this.touch.right) -
       Number(this.keyboard.left || this.touch.left);
@@ -177,7 +185,7 @@ export class InputController {
     this.state.accelerate = nextAccelerate;
     this.state.brake = nextBrake;
     this.state.steer = nextSteer;
-    if (changed) this.state.changedAtMs = performance.now();
+    if (changed) this.state.changedAtMs = changedAtMs;
   }
 
   private emptyGamepad(): NormalizedGamepad {
