@@ -41,7 +41,6 @@ async function prepareScenario(page: Page, scenario: VisualScenario): Promise<vo
         );
       if (cue) {
         return {
-          cueId: cue.id,
           targetLane: cue.maneuverTargetLane,
           phase: cue.maneuverPhase,
         };
@@ -73,7 +72,7 @@ async function prepareScenario(page: Page, scenario: VisualScenario): Promise<vo
     .toBeGreaterThan(6);
 }
 
-async function captureScenario(page: Page, scenario: VisualScenario): Promise<Buffer> {
+async function captureScenario(page: Page, scenario: VisualScenario) {
   await prepareScenario(page, scenario);
   return page.screenshot({
     animations: 'disabled',
