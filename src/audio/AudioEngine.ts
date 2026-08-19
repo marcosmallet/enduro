@@ -5,7 +5,7 @@ import {
   continuousAudioMix,
   snapshotAudioState,
   type AudioCue,
-  type AudioScene,
+  type AudioScene as AudioSceneType,
   type AudioSnapshot,
 } from './audioModel';
 
@@ -57,7 +57,7 @@ export class AudioEngine {
   private noiseBuffer?: AudioBuffer;
   private previous?: AudioSnapshot;
   private loadReference?: AudioSnapshot;
-  private previousScene?: AudioScene;
+  private previousScene?: AudioSceneType;
   private currentSettings = loadSettings();
 
   get settings(): AudioSettings {
@@ -82,7 +82,7 @@ export class AudioEngine {
     this.previousScene = undefined;
   }
 
-  update(state: GameState, scene: AudioScene): void {
+  update(state: GameState, scene: AudioSceneType): void {
     const current = snapshotAudioState(state);
     if (!this.context) {
       this.previous = current;
