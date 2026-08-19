@@ -36,6 +36,7 @@ interface NormalizedGamepad {
 
 const DEAD_ZONE = 0.18;
 export const ANALOG_STEER_STEP = 0.025;
+const MIN_ANALOG_STEER = 0.2;
 
 function emptyDigitalInput(): DigitalInput {
   return { accelerate: false, brake: false, left: false, right: false };
@@ -48,7 +49,9 @@ function pressed(button: GamepadButton | undefined): boolean {
 export function quantizeAnalogSteer(value: number): number {
   const clamped = Math.max(-1, Math.min(1, value));
   if (Math.abs(clamped) < DEAD_ZONE) return 0;
-  return Math.max(-1, Math.min(1, Math.round(clamped / ANALOG_STEER_STEP) * ANALOG_STEER_STEP));
+  const quantized = Math.round(clamped / ANALOG_STEER_STEP) * ANALOG_STEER_STEP;
+  const magnitude = Math.max(MIN_ANALOG_STEER, Math.abs(quantized));
+  return Math.sign(clamped) * Math.min(1, magnitude);
 }
 
 export class InputController {
