@@ -1,18 +1,56 @@
 import { expect, test, type Page } from '@playwright/test';
 import type { TestContract } from '../../src/GameController';
+import type { SerializableTrafficManeuver } from '../../src/game/types';
 import { projectRoadPoint } from '../../src/rendering/projection';
 
 async function waitForAssets(page: Page): Promise<void> {
   await expect(page.locator('#game-canvas')).toHaveAttribute('data-assets-ready', 'true');
 }
 
-async function readManeuvers(page: Page) {
+async function advanceToReadableTelegraph(
+  page: Page,
+): Promise<SerializableTrafficManeuver | undefined> {
   return page.evaluate(() => {
     const contract = (window as Window & { __roadEnduranceTest?: TestContract })
       .__roadEnduranceTest;
     if (!contract) throw new Error('Test contract was not installed.');
-    return contract.getState().trafficManeuvers;
+
+    for (let frame = 0; frame < 900; frame += 1) {
+      contract.step(1 / 60);
+      const cue = contract
+        .getState()
+        .trafficManeuvers.find(
+          (vehicle) =>
+            vehicle.maneuverPhase === 'TELEGRAPH' &&
+            vehicle.maneuverProgress >= 0.65 &&
+            vehicle.z >= 28 &&
+            vehicle.z <= 120,
+        );
+      if (cue) return cue;
+    }
+    return undefined;
   });
+}
+
+async function advanceToCommittedChange(
+  page: Page,
+  vehicleId: string,
+): Promise<SerializableTrafficManeuver | undefined> {
+  return page.evaluate((requestedVehicleId) => {
+    const contract = (window as Window & { __roadEnduranceTest?: TestContract })
+      .__roadEnduranceTest;
+    if (!contract) throw new Error('Test contract was not installed.');
+
+    for (let follow = 0; follow < 75; follow += 1) {
+      contract.step(1 / 60);
+      const next = contract
+        .getState()
+        .trafficManeuvers.find((vehicle) => vehicle.id === requestedVehicleId);
+      if (!next || next.maneuverPhase === 'IDLE') return undefined;
+      if (next.maneuverPhase === 'CHANGING') return next;
+    }
+    return undefined;
+  }, vehicleId);
 }
 
 test.describe('Traffic player-facing fairness', () => {
@@ -32,58 +70,27 @@ test.describe('Traffic player-facing fairness', () => {
       if (!contract) throw new Error('Test contract was not installed.');
       contract.start('AUTHENTIC_ENDURANCE');
       contract.setInput({ accelerate: false, brake: false, steer: 0 });
+      // Keep one candidate stationary in the readable mid-field while the rest of traffic
+      // naturally clears its corridor. Its seeded cooldown/intent remain production-owned.
+      contract.placeVehicle({ z: 120, lateral: -0.68, speedKph: 0 });
     });
 
-    let accepted:
-      | {
-          cue: Awaited<ReturnType<typeof readManeuvers>>[number];
-          changing: Awaited<ReturnType<typeof readManeuvers>>[number];
-        }
-      | undefined;
+    const cue = await advanceToReadableTelegraph(page);
+    expect(cue).toBeDefined();
+    if (!cue) return;
 
-    for (let frame = 0; frame < 900 && !accepted; frame += 1) {
-      await page.evaluate(() => {
-        const contract = (window as Window & { __roadEnduranceTest?: TestContract })
-          .__roadEnduranceTest;
-        if (!contract) throw new Error('Test contract was not installed.');
-        contract.step(1 / 60);
-      });
-      const maneuvers = await readManeuvers(page);
-      const cue = maneuvers.find(
-        (vehicle) =>
-          vehicle.maneuverPhase === 'TELEGRAPH' &&
-          vehicle.maneuverProgress >= 0.65 &&
-          vehicle.z >= 28 &&
-          vehicle.z <= 120,
-      );
-      if (!cue) continue;
+    await page.screenshot({
+      path: `.logs/traffic-telegraph-${testInfo.project.name}.png`,
+    });
 
-      await page.screenshot({
-        path: `.logs/traffic-telegraph-${testInfo.project.name}.png`,
-      });
+    const changing = await advanceToCommittedChange(page, cue.id);
+    expect(changing).toBeDefined();
+    if (!changing) return;
 
-      for (let follow = 0; follow < 75; follow += 1) {
-        await page.evaluate(() => {
-          const contract = (window as Window & { __roadEnduranceTest?: TestContract })
-            .__roadEnduranceTest;
-          if (!contract) throw new Error('Test contract was not installed.');
-          contract.step(1 / 60);
-        });
-        const next = (await readManeuvers(page)).find((vehicle) => vehicle.id === cue.id);
-        if (!next || next.maneuverPhase === 'IDLE') break;
-        if (next.maneuverPhase === 'CHANGING') {
-          accepted = { cue, changing: next };
-          break;
-        }
-      }
-    }
-
-    expect(accepted).toBeDefined();
-    if (!accepted) return;
-    expect(accepted.cue.maneuverTargetLane).not.toBeNull();
-    expect(accepted.changing.maneuverPhase).toBe('CHANGING');
-    const cuePoint = projectRoadPoint(accepted.cue.z, accepted.cue.lateral);
-    const lanePoint = projectRoadPoint(accepted.cue.z, accepted.cue.preferredLane);
+    expect(cue.maneuverTargetLane).not.toBeNull();
+    expect(changing.maneuverPhase).toBe('CHANGING');
+    const cuePoint = projectRoadPoint(cue.z, cue.lateral);
+    const lanePoint = projectRoadPoint(cue.z, cue.preferredLane);
     const projectedCuePixels = Math.abs(cuePoint.x - lanePoint.x);
     expect(projectedCuePixels).toBeGreaterThan(6);
   });
