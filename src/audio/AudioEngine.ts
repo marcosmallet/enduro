@@ -5,6 +5,7 @@ import {
   continuousAudioMix,
   snapshotAudioState,
   type AudioCue,
+  type AudioScene,
   type AudioSnapshot,
 } from './audioModel';
 
@@ -15,7 +16,7 @@ export interface AudioSettings {
   muted: boolean;
 }
 
-export type AudioScene = 'MENU' | 'DRIVE' | 'PAUSED';
+export type { AudioScene } from './audioModel';
 export type AudioStatus = 'LOCKED' | 'ACTIVE' | 'MUTED' | 'SUSPENDED';
 
 const STORAGE_KEY = 'road-endurance-audio-settings';
@@ -56,6 +57,7 @@ export class AudioEngine {
   private noiseBuffer?: AudioBuffer;
   private previous?: AudioSnapshot;
   private loadReference?: AudioSnapshot;
+  private previousScene?: AudioScene;
   private currentSettings = loadSettings();
 
   get settings(): AudioSettings {
@@ -77,16 +79,24 @@ export class AudioEngine {
   resetState(state: GameState): void {
     this.previous = snapshotAudioState(state);
     this.loadReference = undefined;
+    this.previousScene = undefined;
   }
 
   update(state: GameState, scene: AudioScene): void {
     const current = snapshotAudioState(state);
     if (!this.context) {
       this.previous = current;
+      this.previousScene = scene;
       return;
     }
 
-    this.loadReference = advanceAudioLoadReference(current, this.previous, this.loadReference);
+    const sceneChanged = this.previousScene !== undefined && this.previousScene !== scene;
+    this.loadReference = advanceAudioLoadReference(
+      current,
+      this.previous,
+      this.loadReference,
+      sceneChanged,
+    );
     const now = this.context.currentTime;
     const mix = continuousAudioMix(current, this.loadReference);
     const driveLevel = scene === 'DRIVE' ? 1 : scene === 'MENU' ? 0.48 : 0.12;
@@ -101,6 +111,7 @@ export class AudioEngine {
 
     for (const cue of audioCuesBetween(this.previous, current)) this.playCue(cue);
     this.previous = current;
+    this.previousScene = scene;
   }
 
   setMaster(value: number): void {
