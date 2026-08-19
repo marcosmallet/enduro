@@ -193,6 +193,61 @@ test.describe('Milestone 6 optimization and final validation', () => {
     }
   });
 
+  test('adds bounded camera feedback and honors reduced motion', async ({ page }, testInfo) => {
+    const driveAndRead = async () => {
+      await page.evaluate(() => {
+        const contract = (window as Window & { __roadEnduranceTest?: TestContract })
+          .__roadEnduranceTest;
+        if (!contract) throw new Error('Test contract was not installed.');
+        contract.start('POC_QUICK_RACE');
+        contract.setInput({ accelerate: true, steer: 0.72 });
+        contract.step(2.5);
+      });
+      const beforeCollision = await page.locator('#game-canvas').evaluate((element) => ({
+        streaks: Number((element as HTMLCanvasElement).dataset.speedStreaks),
+      }));
+      await page.evaluate(() => {
+        const contract = (window as Window & { __roadEnduranceTest?: TestContract })
+          .__roadEnduranceTest;
+        if (!contract) throw new Error('Test contract was not installed.');
+        contract.forceCollision();
+        contract.step(1 / 120);
+      });
+      const camera = await page.locator('#game-canvas').evaluate((element) => {
+        const canvas = element as HTMLCanvasElement;
+        return {
+          roll: Number(canvas.dataset.cameraRoll),
+          bob: Number(canvas.dataset.cameraBob),
+          lean: Number(canvas.dataset.playerLean),
+          kick: Number(canvas.dataset.cameraKick),
+          motionScale: Number(canvas.dataset.motionScale),
+          reducedMotion: canvas.dataset.reducedMotion,
+        };
+      });
+      return { beforeCollision, camera };
+    };
+
+    const regular = await driveAndRead();
+    expect(regular.beforeCollision.streaks).toBeGreaterThan(0);
+    expect(Math.abs(regular.camera.roll)).toBeLessThanOrEqual(0.02);
+    expect(Math.abs(regular.camera.bob)).toBeLessThanOrEqual(4);
+    expect(Math.abs(regular.camera.lean)).toBeLessThanOrEqual(0.045);
+    expect(Math.abs(regular.camera.kick)).toBeLessThanOrEqual(4);
+    expect(regular.camera.motionScale).toBe(1);
+    expect(regular.camera.reducedMotion).toBe('false');
+    if (testInfo.project.name === 'desktop-720p' || testInfo.project.name === 'mobile-landscape') {
+      await page.screenshot({ path: `.logs/camera-feedback-${testInfo.project.name}.png` });
+    }
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.reload();
+    await waitForAssets(page);
+    const reduced = await driveAndRead();
+    expect(reduced.camera.motionScale).toBeCloseTo(0.18, 2);
+    expect(reduced.camera.reducedMotion).toBe('true');
+    expect(reduced.beforeCollision.streaks).toBeLessThan(regular.beforeCollision.streaks);
+  });
+
   test('captures the ten canonical fidelity scenes', async ({ page }, testInfo) => {
     if (testInfo.project.name !== 'desktop-1080p') {
       await expect(page.locator('.build-tag')).toHaveText('M6 · FINAL POC');

@@ -9,6 +9,7 @@ import {
 import type { GraphicsSettings } from '../config/game';
 import type { GameState, TrafficVehicle } from '../game/types';
 import { AssetLibrary, type AssetStats, type VisualAssetName } from './AssetLibrary';
+import { deriveCameraFeedback, type CameraFeedback } from './cameraFeedback';
 import { scenePaletteForPhase } from './palette';
 import { projectRoadPoint } from './projection';
 import { RoadRenderer } from './RoadRenderer';
@@ -57,6 +58,7 @@ export class CanvasRenderer {
   private readonly visibleTraffic: TrafficVehicle[] = [];
   private readonly legacyCanvas = document.createElement('canvas');
   private readonly legacyContext: CanvasRenderingContext2D;
+  private readonly reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
   private legacyAmount = 0;
   private graphics = GRAPHICS_PROFILES.HIGH;
 
@@ -101,9 +103,15 @@ export class CanvasRenderer {
   render(state: GameState, timeSeconds: number): void {
     const ctx = this.context;
     const palette = scenePaletteForPhase(state.phase, state.phaseProgress);
+    const camera = deriveCameraFeedback(state, timeSeconds, this.reducedMotionQuery.matches);
+    this.syncCameraTelemetry(camera);
+
     ctx.save();
     ctx.clearRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
     this.drawSky(state, timeSeconds);
+
+    ctx.save();
+    this.applyWorldCamera(camera);
     this.drawLandscape(state);
     this.roadRenderer.render(state);
     this.drawIceReflections(state, timeSeconds);
@@ -129,11 +137,12 @@ export class CanvasRenderer {
     }
     this.canvas.dataset.highDetailVehicles = String(detailedNearVehicles);
     this.canvas.dataset.nearestTrafficWidth = nearestTrafficWidth.toFixed(1);
-
     this.drawFog(state);
-    this.drawPlayer(state, timeSeconds);
+    ctx.restore();
+
+    this.drawPlayer(state, camera);
     this.drawCollisionSparks(state, timeSeconds);
-    this.drawSpeedStreaks(state, timeSeconds);
+    this.drawSpeedStreaks(state, timeSeconds, camera.motionScale);
     this.drawIceParticles(state, timeSeconds);
 
     if (state.collisionFlash > 0) {
@@ -145,6 +154,25 @@ export class CanvasRenderer {
     ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
     ctx.restore();
     if (this.legacyAmount > 0.005) this.applyLegacyPass();
+  }
+
+  private syncCameraTelemetry(camera: CameraFeedback): void {
+    this.canvas.dataset.cameraRoll = camera.worldRollRadians.toFixed(5);
+    this.canvas.dataset.cameraBob = camera.worldOffsetY.toFixed(3);
+    this.canvas.dataset.playerLean = camera.playerRollRadians.toFixed(5);
+    this.canvas.dataset.cameraKick = camera.playerOffsetX.toFixed(3);
+    this.canvas.dataset.motionScale = camera.motionScale.toFixed(2);
+    this.canvas.dataset.reducedMotion = String(this.reducedMotionQuery.matches);
+  }
+
+  private applyWorldCamera(camera: CameraFeedback): void {
+    const ctx = this.context;
+    const pivotX = LOGICAL_WIDTH / 2;
+    const pivotY = LOGICAL_HEIGHT * 0.56;
+    ctx.translate(pivotX, pivotY);
+    ctx.rotate(camera.worldRollRadians);
+    ctx.translate(-pivotX, -pivotY);
+    ctx.translate(0, camera.worldOffsetY);
   }
 
   private drawSky(state: GameState, timeSeconds: number): void {
@@ -352,14 +380,11 @@ export class CanvasRenderer {
     return TRAFFIC_COLOR_FILTERS[color] ?? 'none';
   }
 
-  private drawPlayer(state: GameState, timeSeconds: number): void {
+  private drawPlayer(state: GameState, camera: CameraFeedback): void {
     const ctx = this.context;
     const road = projectRoadPoint(0, state.playerX, state.distanceMeters);
-    const speedRatio = state.speedKph / 228;
-    const vibration = speedRatio > 0.7 ? Math.sin(timeSeconds * 45) * (speedRatio - 0.7) * 3 : 0;
-    const collisionKick = state.collisionFlash > 0 ? Math.sin(timeSeconds * 80) * 6 : 0;
-    const centerX = road.x + collisionKick;
-    const baseY = LOGICAL_HEIGHT - 34 + vibration;
+    const centerX = road.x + camera.playerOffsetX;
+    const baseY = LOGICAL_HEIGHT - 34 + camera.playerOffsetY;
     const width = PLAYER_VISUAL_WIDTH;
     const height = PLAYER_VISUAL_HEIGHT;
     const x = centerX - width / 2;
@@ -367,6 +392,9 @@ export class CanvasRenderer {
     this.canvas.dataset.playerVisualWidth = String(PLAYER_VISUAL_WIDTH);
 
     ctx.save();
+    ctx.translate(centerX, baseY);
+    ctx.rotate(camera.playerRollRadians);
+    ctx.translate(-centerX, -baseY);
     if (this.graphics.shadows) {
       ctx.fillStyle = 'rgba(0,0,0,.48)';
       ctx.beginPath();
@@ -385,9 +413,6 @@ export class CanvasRenderer {
       const assetWidth = PLAYER_VISUAL_WIDTH;
       const assetHeight = assetWidth * (playerAsset.naturalHeight / playerAsset.naturalWidth);
       ctx.translate(centerX, baseY);
-      if (state.collisionFlash > 0) {
-        ctx.rotate(Math.sin(timeSeconds * 62) * state.collisionFlash * 0.035);
-      }
       const isNight = state.phase === 'NIGHT' || state.phase === 'LATE_NIGHT';
       ctx.filter = isNight ? 'brightness(.58) saturate(.82) contrast(1.06)' : 'none';
       ctx.drawImage(playerAsset, -assetWidth / 2, -assetHeight + 6, assetWidth, assetHeight);
@@ -552,12 +577,19 @@ export class CanvasRenderer {
     ctx.restore();
   }
 
-  private drawSpeedStreaks(state: GameState, timeSeconds: number): void {
-    if (state.speedKph < 150) return;
+  private drawSpeedStreaks(state: GameState, timeSeconds: number, motionScale: number): void {
+    if (state.speedKph < 150) {
+      this.canvas.dataset.speedStreaks = '0';
+      return;
+    }
     const ctx = this.context;
     const intensity = (state.speedKph - 150) / 78;
-    const streakCount = Math.max(6, Math.round(16 * this.graphics.particleScale));
-    ctx.strokeStyle = `rgba(226, 246, 255, ${0.08 + intensity * 0.1})`;
+    const streakCount = Math.max(
+      2,
+      Math.round(16 * this.graphics.particleScale * Math.max(0.18, motionScale)),
+    );
+    this.canvas.dataset.speedStreaks = String(streakCount);
+    ctx.strokeStyle = `rgba(226, 246, 255, ${(0.08 + intensity * 0.1) * motionScale})`;
     ctx.lineWidth = 2;
     for (let index = 0; index < streakCount; index += 1) {
       const direction = index % 2 === 0 ? -1 : 1;
