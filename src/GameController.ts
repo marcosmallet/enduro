@@ -3,6 +3,7 @@ import { BRANDING } from './config/runtimeBranding';
 import {
   detectGraphicsProfile,
   GRAPHICS_PROFILES,
+  SIMULATION_TRAFFIC_COUNT,
   type GraphicsProfile,
 } from './config/game';
 import { difficultyForDay } from './game/difficulty';
@@ -31,6 +32,7 @@ import {
 } from './performance/GraphicsManager';
 import { CanvasRenderer } from './rendering/CanvasRenderer';
 import { hyperRevealProgress, type VisualMode } from './rendering/visualModes';
+import { createGameMarkup } from './ui/gameMarkup';
 
 interface DeferredInstallPrompt extends Event {
   prompt: () => Promise<void>;
@@ -38,6 +40,7 @@ interface DeferredInstallPrompt extends Event {
 }
 
 const GRAPHICS_STORAGE_KEY = 'road-endurance-graphics-profile';
+const ELEMENT_CACHE = new WeakMap<ParentNode, Map<string, Element>>();
 
 function loadGraphicsSelection(): GraphicsSelection {
   try {
@@ -87,9 +90,32 @@ declare global {
 }
 
 function requiredElement<T extends Element>(root: ParentNode, selector: string): T {
+  let cache = ELEMENT_CACHE.get(root);
+  if (!cache) {
+    cache = new Map<string, Element>();
+    ELEMENT_CACHE.set(root, cache);
+  }
+  const cached = cache.get(selector);
+  if (cached) return cached as T;
+
   const element = root.querySelector<T>(selector);
   if (!element) throw new Error(`Required element not found: ${selector}`);
+  cache.set(selector, element);
   return element;
+}
+
+function setTextContent(element: Element, value: string): void {
+  if (element.textContent !== value) element.textContent = value;
+}
+
+function setStyleProperty(element: HTMLElement, property: string, value: string): void {
+  if (element.style.getPropertyValue(property) !== value) {
+    element.style.setProperty(property, value);
+  }
+}
+
+function setHidden(element: HTMLElement, hidden: boolean): void {
+  if (element.hidden !== hidden) element.hidden = hidden;
 }
 
 export class GameController {
@@ -118,169 +144,20 @@ export class GameController {
   private readonly testMode = new URLSearchParams(window.location.search).get('test') === '1';
 
   constructor(private readonly root: HTMLElement) {
-    this.root.innerHTML = this.createMarkup();
+    this.root.innerHTML = createGameMarkup();
     this.canvas = requiredElement<HTMLCanvasElement>(root, '#game-canvas');
     this.renderer = new CanvasRenderer(this.canvas);
     this.renderer.setGraphicsSettings(GRAPHICS_PROFILES[this.graphics.activeProfile]);
     this.input = new InputController(root);
     this.state = createGameState('POC_QUICK_RACE', { seed: 1983, targetOverride: 999 });
     this.state.speedKph = 142;
-    populateTraffic(this.state, GRAPHICS_PROFILES[this.graphics.activeProfile].maxTraffic);
+    populateTraffic(this.state, SIMULATION_TRAFFIC_COUNT);
     this.simulation = new Simulation(this.state);
     this.bindUi();
     this.applyBranding();
     this.updateLanguage();
     if (this.testMode) this.installTestContract();
     requestAnimationFrame(this.frame);
-  }
-
-  private createMarkup(): string {
-    return `
-      <main class="game-shell" data-visual-mode="HYPER">
-        <canvas id="game-canvas" aria-label="Estrada de corrida vista por trás do carro"></canvas>
-        <div class="vignette" aria-hidden="true"></div>
-        <div class="film-grain" aria-hidden="true"></div>
-
-        <section class="hud" aria-live="polite" hidden>
-          <div class="hud-cluster hud-primary">
-            <span class="hud-kicker" data-i18n="day">DIA</span>
-            <strong class="hud-value" data-hud="day">1</strong>
-          </div>
-          <div class="hud-cluster hud-counter">
-            <span class="hud-kicker" data-i18n="carsLeft">CARROS RESTANTES</span>
-            <strong class="hud-value hud-value-large" data-hud="cars-left">20</strong>
-            <div class="target-line"><span data-hud="progress"></span></div>
-          </div>
-          <div class="hud-cluster hud-metrics">
-            <div><span data-i18n="speed">VELOCIDADE</span><strong><span data-hud="speed">0</span> <small>KM/H</small></strong></div>
-            <div><span data-i18n="distance">DISTÂNCIA</span><strong><span data-hud="distance">0.0</span> <small>KM</small></strong></div>
-            <div><span data-i18n="best">MELHOR</span><strong><span data-hud="best">0</span> <small data-i18n="daysUnit">DIAS</small></strong></div>
-          </div>
-          <div class="environment-chip"><span data-hud="phase">AMANHECER</span><i></i><span data-hud="weather">LIMPO</span></div>
-          <div class="quick-timer" data-hud="timer" hidden>01:30</div>
-        </section>
-
-        <section class="menu" aria-labelledby="brand-title">
-          <div class="menu-topline">
-            <span class="eyebrow" data-brand="eyebrow"></span>
-            <div class="menu-actions">
-              <button class="text-button" type="button" data-action="language">PT / EN</button>
-              <button class="text-button" type="button" data-action="audio-toggle" data-i18n="audio">ÁUDIO</button>
-              <button class="text-button" type="button" data-action="install" data-i18n="install" hidden>INSTALAR</button>
-              <button class="icon-button" type="button" data-action="fullscreen" aria-label="Tela cheia">⛶</button>
-            </div>
-          </div>
-          <div class="title-lockup">
-            <div class="speed-mark" aria-hidden="true"><i></i><i></i><i></i></div>
-            <h1 id="brand-title" data-brand="name"></h1>
-            <p class="subtitle" data-brand="subtitle"></p>
-            <p class="legal" data-brand="legal"></p>
-            <div class="era-transition" data-transition="era" aria-hidden="true">
-              <span>LEGACY</span><div><i></i></div><span>HYPER REALISTIC</span>
-            </div>
-          </div>
-          <div class="mode-grid">
-            <button class="mode-card mode-card-primary" type="button" data-mode="AUTHENTIC_ENDURANCE">
-              <span class="mode-index">01</span>
-              <span><strong data-i18n="authentic"></strong><small data-i18n="authenticDetail"></small></span>
-              <b aria-hidden="true">→</b>
-            </button>
-            <button class="mode-card" type="button" data-mode="POC_QUICK_RACE">
-              <span class="mode-index">02</span>
-              <span><strong data-i18n="quick"></strong><small data-i18n="quickDetail"></small></span>
-              <b aria-hidden="true">→</b>
-            </button>
-          </div>
-          <section class="audio-panel" aria-label="Controles de áudio" hidden>
-            <div class="audio-panel-heading">
-              <strong data-i18n="audio">ÁUDIO</strong>
-              <button type="button" data-action="mute" data-i18n="mute">SILENCIAR</button>
-            </div>
-            <label><span data-i18n="masterVolume">GERAL</span><input type="range" min="0" max="100" step="1" data-audio="master"><output data-audio-value="master"></output></label>
-            <label><span data-i18n="musicVolume">MÚSICA</span><input type="range" min="0" max="100" step="1" data-audio="music"><output data-audio-value="music"></output></label>
-            <label><span data-i18n="effectsVolume">EFEITOS</span><input type="range" min="0" max="100" step="1" data-audio="effects"><output data-audio-value="effects"></output></label>
-          </section>
-          <div class="menu-footer">
-            <label><span>VISUAL</span>
-              <select data-action="visual-mode" aria-label="Modo visual">
-                <option value="HYPER">HYPER REALISTIC</option>
-                <option value="CINEMATIC">CINEMATIC</option>
-                <option value="LEGACY">LEGACY</option>
-              </select>
-            </label>
-            <label><span data-i18n="graphics">GRÁFICOS</span>
-              <select data-action="graphics-profile" aria-label="Perfil gráfico">
-                <option value="AUTO">AUTO</option>
-                <option value="LOW">LOW</option>
-                <option value="MEDIUM">MEDIUM</option>
-                <option value="HIGH">HIGH</option>
-              </select>
-            </label>
-            <span class="controls-hint" data-i18n="controls"></span>
-            <span class="build-tag">M6 · FINAL POC</span>
-          </div>
-        </section>
-
-        <section class="modal pause-modal" hidden aria-labelledby="pause-title">
-          <span class="modal-kicker">SYSTEM / HOLD</span>
-          <h2 id="pause-title" data-i18n="paused"></h2>
-          <div class="modal-actions">
-            <button type="button" data-action="continue" data-i18n="continue"></button>
-            <button type="button" data-action="restart" data-i18n="restart"></button>
-            <button type="button" data-action="mute" data-i18n="mute"></button>
-            <button type="button" data-action="menu" data-i18n="menu"></button>
-          </div>
-        </section>
-
-        <section class="modal result-modal" hidden aria-labelledby="result-title">
-          <span class="modal-kicker" data-result="kicker">RUN COMPLETE</span>
-          <h2 id="result-title" data-result="title"></h2>
-          <p data-result="summary"></p>
-          <div class="modal-actions">
-            <button type="button" data-action="restart" data-i18n="restart"></button>
-            <button type="button" data-action="menu" data-i18n="menu"></button>
-          </div>
-        </section>
-
-        <aside class="diagnostics" hidden>
-          <div><strong>F3 / DIAGNOSTICS</strong><span data-diagnostic="fps">60 FPS</span></div>
-          <dl>
-            <dt>FRAME</dt><dd data-diagnostic="frame">16.7 MS</dd>
-            <dt>INTERNAL</dt><dd data-diagnostic="internal">1280 × 720</dd>
-            <dt>PROFILE</dt><dd data-diagnostic="profile"></dd>
-            <dt>TRAFFIC</dt><dd data-diagnostic="traffic"></dd>
-            <dt>WEATHER</dt><dd data-diagnostic="weather"></dd>
-            <dt>PHASE</dt><dd data-diagnostic="phase"></dd>
-            <dt>SPEED</dt><dd data-diagnostic="speed"></dd>
-            <dt>DISTANCE</dt><dd data-diagnostic="distance"></dd>
-            <dt>DAILY COUNT</dt><dd data-diagnostic="counter"></dd>
-            <dt>DAY CLOCK</dt><dd data-diagnostic="day-clock"></dd>
-            <dt>DIFFICULTY</dt><dd data-diagnostic="difficulty"></dd>
-            <dt>ASSETS</dt><dd data-diagnostic="assets">LOADING</dd>
-            <dt>AUDIO</dt><dd data-diagnostic="audio">LOCKED</dd>
-            <dt>GAMEPAD</dt><dd data-diagnostic="gamepad">NONE</dd>
-            <dt>PWA</dt><dd data-diagnostic="pwa">INSTALLING</dd>
-            <dt>EFFECTS</dt><dd data-diagnostic="effects">100%</dd>
-          </dl>
-        </aside>
-
-        <div class="goal-toast" hidden><span>✓</span><strong data-i18n="goalComplete"></strong></div>
-        <div class="day-toast" hidden>
-          <span data-i18n="newDay">NOVO DIA</span>
-          <strong data-hud="new-day">DIA 2</strong>
-        </div>
-
-        <div class="touch-controls" aria-label="Controles de toque">
-          <div class="touch-steering">
-            <button type="button" data-control="left" aria-label="Esquerda">←</button>
-            <button type="button" data-control="right" aria-label="Direita">→</button>
-          </div>
-          <div class="touch-pedals">
-            <button type="button" data-control="brake" data-i18n="touchBrake"></button>
-            <button type="button" data-control="accelerate" data-i18n="touchGas"></button>
-          </div>
-        </div>
-      </main>`;
   }
 
   private bindUi(): void {
@@ -342,7 +219,7 @@ export class GameController {
       () => {
         this.unlockAudio('UI_MOVE');
         const panel = requiredElement<HTMLElement>(this.root, '.audio-panel');
-        panel.hidden = !panel.hidden;
+        setHidden(panel, !panel.hidden);
       },
     );
     for (const button of this.root.querySelectorAll<HTMLButtonElement>('[data-action="mute"]')) {
@@ -370,11 +247,11 @@ export class GameController {
     window.addEventListener('beforeinstallprompt', (event) => {
       event.preventDefault();
       this.deferredInstallPrompt = event as DeferredInstallPrompt;
-      requiredElement<HTMLButtonElement>(this.root, '[data-action="install"]').hidden = false;
+      setHidden(requiredElement<HTMLButtonElement>(this.root, '[data-action="install"]'), false);
     });
     window.addEventListener('appinstalled', () => {
       this.deferredInstallPrompt = undefined;
-      requiredElement<HTMLButtonElement>(this.root, '[data-action="install"]').hidden = true;
+      setHidden(requiredElement<HTMLButtonElement>(this.root, '[data-action="install"]'), true);
     });
     window.addEventListener('keydown', (event) => {
       if (event.repeat) return;
@@ -388,7 +265,10 @@ export class GameController {
       if (event.code === 'F3') {
         event.preventDefault();
         this.diagnosticsVisible = !this.diagnosticsVisible;
-        requiredElement<HTMLElement>(this.root, '.diagnostics').hidden = !this.diagnosticsVisible;
+        setHidden(
+          requiredElement<HTMLElement>(this.root, '.diagnostics'),
+          !this.diagnosticsVisible,
+        );
       }
       if ((event.code === 'Enter' || event.code === 'Space') && this.inMenu) {
         const active = document.activeElement;
@@ -437,7 +317,7 @@ export class GameController {
   private syncFullscreenButton(): void {
     const button = requiredElement<HTMLButtonElement>(this.root, '[data-action="fullscreen"]');
     const active = Boolean(document.fullscreenElement);
-    button.textContent = active ? '×' : '⛶';
+    setTextContent(button, active ? '×' : '⛶');
     button.setAttribute('aria-label', translate(this.language, active ? 'exitFullscreen' : 'fullscreen'));
     button.setAttribute('aria-pressed', String(active));
   }
@@ -464,26 +344,23 @@ export class GameController {
   }
 
   private applyGraphicsProfile(): void {
-    const settings = GRAPHICS_PROFILES[this.graphics.activeProfile];
-    this.renderer.setGraphicsSettings(settings);
-    if (this.state.traffic.length > settings.maxTraffic) {
-      this.state.traffic = [...this.state.traffic]
-        .sort((first, second) => first.z - second.z)
-        .slice(0, settings.maxTraffic);
-    } else if (this.inMenu && this.state.traffic.length < settings.maxTraffic) {
-      populateTraffic(this.state, settings.maxTraffic);
-    }
+    this.renderer.setGraphicsSettings(GRAPHICS_PROFILES[this.graphics.activeProfile]);
   }
 
   private syncAudioControls(): void {
     const settings = this.audio.settings;
     for (const key of ['master', 'music', 'effects'] as const) {
       const percent = Math.round(settings[key] * 100);
-      requiredElement<HTMLInputElement>(this.root, `[data-audio="${key}"]`).value = String(percent);
-      requiredElement<HTMLOutputElement>(this.root, `[data-audio-value="${key}"]`).textContent = `${percent}%`;
+      const input = requiredElement<HTMLInputElement>(this.root, `[data-audio="${key}"]`);
+      const value = String(percent);
+      if (input.value !== value) input.value = value;
+      setTextContent(
+        requiredElement<HTMLOutputElement>(this.root, `[data-audio-value="${key}"]`),
+        `${percent}%`,
+      );
     }
     for (const button of this.root.querySelectorAll<HTMLButtonElement>('[data-action="mute"]')) {
-      button.textContent = translate(this.language, settings.muted ? 'unmute' : 'mute');
+      setTextContent(button, translate(this.language, settings.muted ? 'unmute' : 'mute'));
       button.setAttribute('aria-pressed', String(settings.muted));
     }
   }
@@ -493,22 +370,25 @@ export class GameController {
     const prompt = this.deferredInstallPrompt;
     await prompt.prompt();
     await prompt.userChoice;
-    requiredElement<HTMLButtonElement>(this.root, '[data-action="install"]').hidden = true;
+    setHidden(requiredElement<HTMLButtonElement>(this.root, '[data-action="install"]'), true);
     this.deferredInstallPrompt = undefined;
   }
 
   private applyBranding(): void {
-    requiredElement<HTMLElement>(this.root, '[data-brand="eyebrow"]').textContent = BRANDING.eyebrow;
-    requiredElement<HTMLElement>(this.root, '[data-brand="name"]').textContent = BRANDING.logoText;
-    requiredElement<HTMLElement>(this.root, '[data-brand="subtitle"]').textContent = BRANDING.subtitle;
+    setTextContent(requiredElement<HTMLElement>(this.root, '[data-brand="eyebrow"]'), BRANDING.eyebrow);
+    setTextContent(requiredElement<HTMLElement>(this.root, '[data-brand="name"]'), BRANDING.logoText);
+    setTextContent(requiredElement<HTMLElement>(this.root, '[data-brand="subtitle"]'), BRANDING.subtitle);
     const legal = requiredElement<HTMLElement>(this.root, '[data-brand="legal"]');
-    legal.textContent = BRANDING.legalNotice;
-    legal.hidden = BRANDING.legalNotice.length === 0;
+    setTextContent(legal, BRANDING.legalNotice);
+    setHidden(legal, BRANDING.legalNotice.length === 0);
     document.title = `${BRANDING.name} — ${BRANDING.subtitle}`;
     document.documentElement.style.setProperty('--accent', BRANDING.colors.accent);
     document.documentElement.style.setProperty('--accent-warm', BRANDING.colors.accentWarm);
     document.documentElement.style.setProperty('--panel', BRANDING.colors.panel);
-    document.querySelector<HTMLMetaElement>('meta[name="description"]')?.setAttribute('content', BRANDING.description);
+    document.querySelector<HTMLMetaElement>('meta[name="description"]')?.setAttribute(
+      'content',
+      BRANDING.description,
+    );
   }
 
   private start(mode: GameMode, targetOverride?: number): void {
@@ -519,16 +399,16 @@ export class GameController {
       targetOverride,
     });
     updateEnvironment(this.state);
-    populateTraffic(this.state, GRAPHICS_PROFILES[this.graphics.activeProfile].maxTraffic);
+    populateTraffic(this.state, SIMULATION_TRAFFIC_COUNT);
     this.simulation = new Simulation(this.state);
     this.audio.resetState(this.state);
     this.inMenu = false;
     this.updateVisualPresentation(performance.now());
-    requiredElement<HTMLElement>(this.root, '.menu').hidden = true;
-    requiredElement<HTMLElement>(this.root, '.hud').hidden = false;
-    requiredElement<HTMLElement>(this.root, '.pause-modal').hidden = true;
-    requiredElement<HTMLElement>(this.root, '.result-modal').hidden = true;
-    requiredElement<HTMLElement>(this.root, '.audio-panel').hidden = true;
+    setHidden(requiredElement<HTMLElement>(this.root, '.menu'), true);
+    setHidden(requiredElement<HTMLElement>(this.root, '.hud'), false);
+    setHidden(requiredElement<HTMLElement>(this.root, '.pause-modal'), true);
+    setHidden(requiredElement<HTMLElement>(this.root, '.result-modal'), true);
+    setHidden(requiredElement<HTMLElement>(this.root, '.audio-panel'), true);
     requiredElement<HTMLElement>(this.root, '.touch-controls').dataset.active = 'true';
     this.syncView();
   }
@@ -539,15 +419,15 @@ export class GameController {
     this.state = createGameState('POC_QUICK_RACE', { seed: 1983, targetOverride: 999 });
     this.state.speedKph = 142;
     updateEnvironment(this.state);
-    populateTraffic(this.state, GRAPHICS_PROFILES[this.graphics.activeProfile].maxTraffic);
+    populateTraffic(this.state, SIMULATION_TRAFFIC_COUNT);
     this.simulation = new Simulation(this.state);
     this.audio.resetState(this.state);
     this.menuDemoStartedAt = performance.now();
     this.testRevealProgress = undefined;
-    requiredElement<HTMLElement>(this.root, '.menu').hidden = false;
-    requiredElement<HTMLElement>(this.root, '.hud').hidden = true;
-    requiredElement<HTMLElement>(this.root, '.pause-modal').hidden = true;
-    requiredElement<HTMLElement>(this.root, '.result-modal').hidden = true;
+    setHidden(requiredElement<HTMLElement>(this.root, '.menu'), false);
+    setHidden(requiredElement<HTMLElement>(this.root, '.hud'), true);
+    setHidden(requiredElement<HTMLElement>(this.root, '.pause-modal'), true);
+    setHidden(requiredElement<HTMLElement>(this.root, '.result-modal'), true);
     requiredElement<HTMLElement>(this.root, '.touch-controls').dataset.active = 'false';
   }
 
@@ -555,7 +435,7 @@ export class GameController {
     if (this.inMenu || this.state.screen === 'VICTORY' || this.state.screen === 'GAME_OVER') return;
     this.state.screen = paused ? 'PAUSED' : 'PLAYING';
     this.input.reset();
-    requiredElement<HTMLElement>(this.root, '.pause-modal').hidden = !paused;
+    setHidden(requiredElement<HTMLElement>(this.root, '.pause-modal'), !paused);
     requiredElement<HTMLElement>(this.root, '.touch-controls').dataset.active = paused ? 'false' : 'true';
     this.syncView();
   }
@@ -567,8 +447,14 @@ export class GameController {
     this.handleGamepadActions(gamepadActions);
     this.updateVisualPresentation(now);
     if (!this.testMode) {
-      if (this.inMenu) this.simulation.update({ accelerate: true, brake: false, steer: Math.sin(now / 1800) * 0.4 }, delta);
-      else this.simulation.update(this.input.state, delta);
+      if (this.inMenu) {
+        this.simulation.update(
+          { accelerate: true, brake: false, steer: Math.sin(now / 1800) * 0.4 },
+          delta,
+        );
+      } else {
+        this.simulation.update(this.input.state, delta);
+      }
     }
     this.audio.update(
       this.state,
@@ -611,10 +497,10 @@ export class GameController {
       this.visualMode === 'LEGACY' ? 1 : this.visualMode === 'HYPER' && this.inMenu ? 1 - reveal : 0;
     this.renderer.setVisualPresentation(this.visualMode, this.legacyAmount);
     const shell = requiredElement<HTMLElement>(this.root, '.game-shell');
-    shell.style.setProperty('--legacy-amount', this.legacyAmount.toFixed(3));
+    setStyleProperty(shell, '--legacy-amount', this.legacyAmount.toFixed(3));
     const transition = requiredElement<HTMLElement>(this.root, '[data-transition="era"]');
-    transition.hidden = !this.inMenu || this.visualMode !== 'HYPER' || reveal >= 0.999;
-    transition.style.setProperty('--reveal-progress', `${Math.round(reveal * 100)}%`);
+    setHidden(transition, !this.inMenu || this.visualMode !== 'HYPER' || reveal >= 0.999);
+    setStyleProperty(transition, '--reveal-progress', `${Math.round(reveal * 100)}%`);
   }
 
   private recordFrame(delta: number): void {
@@ -634,48 +520,87 @@ export class GameController {
   }
 
   private syncView(): void {
-    const serialized = serializeGameState(this.state);
-    if (this.testMode) this.canvas.dataset.gameState = JSON.stringify(serialized);
-    requiredElement<HTMLElement>(this.root, '[data-hud="day"]').textContent = String(this.state.day);
-    requiredElement<HTMLElement>(this.root, '[data-hud="cars-left"]').textContent = String(this.state.carsLeft);
-    requiredElement<HTMLElement>(this.root, '[data-hud="speed"]').textContent = String(Math.round(this.state.speedKph));
-    requiredElement<HTMLElement>(this.root, '[data-hud="distance"]').textContent = (this.state.distanceMeters / 1000).toFixed(1);
-    requiredElement<HTMLElement>(this.root, '[data-hud="best"]').textContent = String(this.state.bestDays);
-    requiredElement<HTMLElement>(this.root, '[data-hud="progress"]').style.width = `${(this.state.overtakes / this.state.target) * 100}%`;
-    requiredElement<HTMLElement>(this.root, '[data-hud="phase"]').textContent = this.phaseLabel(this.state.phase);
-    requiredElement<HTMLElement>(this.root, '[data-hud="weather"]').textContent = this.weatherLabel(this.state.weather);
+    if (this.testMode) {
+      this.canvas.dataset.gameState = JSON.stringify(serializeGameState(this.state));
+    }
+
+    setTextContent(requiredElement<HTMLElement>(this.root, '[data-hud="day"]'), String(this.state.day));
+    setTextContent(
+      requiredElement<HTMLElement>(this.root, '[data-hud="cars-left"]'),
+      String(this.state.carsLeft),
+    );
+    setTextContent(
+      requiredElement<HTMLElement>(this.root, '[data-hud="speed"]'),
+      String(Math.round(this.state.speedKph)),
+    );
+    setTextContent(
+      requiredElement<HTMLElement>(this.root, '[data-hud="distance"]'),
+      (this.state.distanceMeters / 1000).toFixed(1),
+    );
+    setTextContent(
+      requiredElement<HTMLElement>(this.root, '[data-hud="best"]'),
+      String(this.state.bestDays),
+    );
+    setStyleProperty(
+      requiredElement<HTMLElement>(this.root, '[data-hud="progress"]'),
+      'width',
+      `${(this.state.overtakes / this.state.target) * 100}%`,
+    );
+    setTextContent(
+      requiredElement<HTMLElement>(this.root, '[data-hud="phase"]'),
+      this.phaseLabel(this.state.phase),
+    );
+    setTextContent(
+      requiredElement<HTMLElement>(this.root, '[data-hud="weather"]'),
+      this.weatherLabel(this.state.weather),
+    );
+
     const shell = requiredElement<HTMLElement>(this.root, '.game-shell');
-    shell.dataset.phase = this.state.phase;
-    shell.dataset.weather = this.state.weather;
-    shell.style.setProperty('--weather-intensity', this.state.weatherIntensity.toFixed(3));
+    if (shell.dataset.phase !== this.state.phase) shell.dataset.phase = this.state.phase;
+    if (shell.dataset.weather !== this.state.weather) shell.dataset.weather = this.state.weather;
+    setStyleProperty(shell, '--weather-intensity', this.state.weatherIntensity.toFixed(3));
+
     const timer = requiredElement<HTMLElement>(this.root, '[data-hud="timer"]');
-    timer.hidden = this.state.mode !== 'POC_QUICK_RACE' || this.inMenu;
+    setHidden(timer, this.state.mode !== 'POC_QUICK_RACE' || this.inMenu);
     if (Number.isFinite(this.state.remainingSeconds)) {
       const seconds = Math.ceil(this.state.remainingSeconds);
-      timer.textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+      setTextContent(
+        timer,
+        `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`,
+      );
     }
 
     const goalToast = requiredElement<HTMLElement>(this.root, '.goal-toast');
-    goalToast.hidden = !this.state.goalReached || this.state.screen === 'VICTORY';
+    setHidden(goalToast, !this.state.goalReached || this.state.screen === 'VICTORY');
     const dayToast = requiredElement<HTMLElement>(this.root, '.day-toast');
-    dayToast.hidden = this.inMenu || this.state.newDayFeedbackSeconds <= 0;
-    requiredElement<HTMLElement>(this.root, '[data-hud="new-day"]').textContent =
-      `${translate(this.language, 'day')} ${this.state.day}`;
+    setHidden(dayToast, this.inMenu || this.state.newDayFeedbackSeconds <= 0);
+    setTextContent(
+      requiredElement<HTMLElement>(this.root, '[data-hud="new-day"]'),
+      `${translate(this.language, 'day')} ${this.state.day}`,
+    );
 
     if (!this.inMenu && (this.state.screen === 'VICTORY' || this.state.screen === 'GAME_OVER')) {
       const modal = requiredElement<HTMLElement>(this.root, '.result-modal');
-      modal.hidden = false;
-      requiredElement<HTMLElement>(modal, '[data-result="kicker"]').textContent =
-        this.state.screen === 'VICTORY' ? 'TARGET / COMPLETE' : 'TARGET / MISSED';
-      requiredElement<HTMLElement>(modal, '[data-result="title"]').textContent = translate(
-        this.language,
-        this.state.screen === 'VICTORY'
-          ? 'victory'
-          : this.state.failureReason === 'DAILY_TARGET_MISSED'
-            ? 'dayGoalMissed'
-            : 'timeOver',
+      setHidden(modal, false);
+      setTextContent(
+        requiredElement<HTMLElement>(modal, '[data-result="kicker"]'),
+        this.state.screen === 'VICTORY' ? 'TARGET / COMPLETE' : 'TARGET / MISSED',
       );
-      requiredElement<HTMLElement>(modal, '[data-result="summary"]').textContent = this.resultSummary();
+      setTextContent(
+        requiredElement<HTMLElement>(modal, '[data-result="title"]'),
+        translate(
+          this.language,
+          this.state.screen === 'VICTORY'
+            ? 'victory'
+            : this.state.failureReason === 'DAILY_TARGET_MISSED'
+              ? 'dayGoalMissed'
+              : 'timeOver',
+        ),
+      );
+      setTextContent(
+        requiredElement<HTMLElement>(modal, '[data-result="summary"]'),
+        this.resultSummary(),
+      );
       requiredElement<HTMLElement>(this.root, '.touch-controls').dataset.active = 'false';
     }
     this.syncDiagnostics();
@@ -684,7 +609,7 @@ export class GameController {
   private syncDiagnostics(): void {
     if (!this.diagnosticsVisible) return;
     const set = (name: string, value: string): void => {
-      requiredElement<HTMLElement>(this.root, `[data-diagnostic="${name}"]`).textContent = value;
+      setTextContent(requiredElement<HTMLElement>(this.root, `[data-diagnostic="${name}"]`), value);
     };
     set('fps', `${this.measuredFps} FPS`);
     set('frame', `${(1000 / Math.max(1, this.measuredFps)).toFixed(1)} MS`);
@@ -739,7 +664,7 @@ export class GameController {
   private updateLanguage(): void {
     document.documentElement.lang = this.language === 'pt' ? 'pt-BR' : 'en';
     for (const element of this.root.querySelectorAll<HTMLElement>('[data-i18n]')) {
-      element.textContent = translate(this.language, element.dataset.i18n as TranslationKey);
+      setTextContent(element, translate(this.language, element.dataset.i18n as TranslationKey));
     }
     this.syncAudioControls();
     this.syncFullscreenButton();
@@ -748,7 +673,13 @@ export class GameController {
 
   private phaseLabel(phase: DayPhase): string {
     const keys: Record<DayPhase, TranslationKey> = {
-      DAWN: 'dawn', MORNING: 'morning', DAY: 'dayPhase', SUNSET: 'sunset', DUSK: 'dusk', NIGHT: 'night', LATE_NIGHT: 'lateNight',
+      DAWN: 'dawn',
+      MORNING: 'morning',
+      DAY: 'dayPhase',
+      SUNSET: 'sunset',
+      DUSK: 'dusk',
+      NIGHT: 'night',
+      LATE_NIGHT: 'lateNight',
     };
     return translate(this.language, keys[phase]);
   }
@@ -776,7 +707,9 @@ export class GameController {
         this.updateVisualPresentation(performance.now());
         const frameCount = Math.max(1, Math.ceil(seconds / (1 / 60)));
         const dt = seconds / frameCount;
-        for (let frame = 0; frame < frameCount; frame += 1) this.simulation.update(this.input.state, dt);
+        for (let frame = 0; frame < frameCount; frame += 1) {
+          this.simulation.update(this.input.state, dt);
+        }
         this.audio.update(
           this.state,
           this.inMenu ? 'MENU' : this.state.screen === 'PAUSED' ? 'PAUSED' : 'DRIVE',

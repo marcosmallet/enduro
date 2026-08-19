@@ -9,12 +9,33 @@ import {
 import type { GraphicsSettings } from '../config/game';
 import type { GameState, TrafficVehicle } from '../game/types';
 import { AssetLibrary, type AssetStats, type VisualAssetName } from './AssetLibrary';
-import { mixSceneColor, scenePaletteForPhase } from './palette';
+import { scenePaletteForPhase } from './palette';
 import { projectRoadPoint } from './projection';
+import { RoadRenderer } from './RoadRenderer';
+import { collectVisibleTraffic } from './trafficVisibility';
 import { legacyRenderSize, type VisualMode } from './visualModes';
 
 const PLAYER_VISUAL_WIDTH = 160;
 const PLAYER_VISUAL_HEIGHT = 94;
+
+const SUN_PHASE_OFFSETS: Record<GameState['phase'], number> = {
+  DAWN: 0.08,
+  MORNING: 0.22,
+  DAY: 0.48,
+  SUNSET: 0.82,
+  DUSK: 0.95,
+  NIGHT: 1.2,
+  LATE_NIGHT: -0.15,
+};
+
+const TRAFFIC_COLOR_FILTERS: Readonly<Record<string, string>> = {
+  '#e8edf2': 'brightness(1.03) saturate(.7)',
+  '#cf3348': 'sepia(.55) saturate(3.2) hue-rotate(305deg) brightness(.88)',
+  '#f1a63b': 'sepia(.72) saturate(3.1) hue-rotate(350deg) brightness(.96)',
+  '#347ea8': 'sepia(.4) saturate(2.4) hue-rotate(155deg) brightness(.84)',
+  '#7f8b94': 'brightness(.78) saturate(.42)',
+  '#6b527f': 'sepia(.38) saturate(1.8) hue-rotate(215deg) brightness(.72)',
+};
 
 function roundedRect(
   context: CanvasRenderingContext2D,
@@ -32,9 +53,10 @@ export class CanvasRenderer {
   private readonly context: CanvasRenderingContext2D;
   private readonly canvas: HTMLCanvasElement;
   private readonly assets: AssetLibrary;
+  private readonly roadRenderer: RoadRenderer;
+  private readonly visibleTraffic: TrafficVehicle[] = [];
   private readonly legacyCanvas = document.createElement('canvas');
   private readonly legacyContext: CanvasRenderingContext2D;
-  private asphaltPattern?: CanvasPattern;
   private legacyAmount = 0;
   private graphics = GRAPHICS_PROFILES.HIGH;
 
@@ -53,6 +75,7 @@ export class CanvasRenderer {
       canvas.dataset.assetsReady = stats.loaded === stats.total ? 'true' : 'fallback';
       canvas.dataset.assetsLoaded = String(stats.loaded);
     });
+    this.roadRenderer = new RoadRenderer(this.context, this.assets);
   }
 
   assetStats(): AssetStats {
@@ -61,6 +84,7 @@ export class CanvasRenderer {
 
   setVisualPresentation(mode: VisualMode, legacyAmount: number): void {
     this.legacyAmount = Math.max(0, Math.min(1, legacyAmount));
+    this.roadRenderer.setLegacyAmount(this.legacyAmount);
     const size = legacyRenderSize(this.legacyAmount);
     this.canvas.dataset.renderMode = mode;
     this.canvas.dataset.legacyAmount = this.legacyAmount.toFixed(3);
@@ -69,6 +93,7 @@ export class CanvasRenderer {
 
   setGraphicsSettings(settings: GraphicsSettings): void {
     this.graphics = settings;
+    this.roadRenderer.setGraphicsSettings(settings);
     this.canvas.dataset.graphicsProfile = settings.profile;
     this.canvas.dataset.particleScale = settings.particleScale.toFixed(2);
   }
@@ -80,7 +105,7 @@ export class CanvasRenderer {
     ctx.clearRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
     this.drawSky(state, timeSeconds);
     this.drawLandscape(state);
-    this.drawRoad(state);
+    this.roadRenderer.render(state);
     this.drawIceReflections(state, timeSeconds);
     this.drawRoadside(state);
 
@@ -88,14 +113,11 @@ export class CanvasRenderer {
       this.drawHeadlights(state);
     }
 
-    const candidates = state.traffic
-      .filter(
-        (vehicle) =>
-          vehicle.z > -10 &&
-          vehicle.z < Math.min(ROAD_VISIBLE_DISTANCE, state.visibilityDistance + 18),
-      )
-      .sort((a, b) => b.z - a.z);
-    const visibleTraffic = candidates.slice(-this.graphics.maxVisibleTraffic);
+    const visibleTraffic = collectVisibleTraffic(
+      state,
+      this.graphics.maxVisibleTraffic,
+      this.visibleTraffic,
+    );
     this.canvas.dataset.visibleTraffic = String(visibleTraffic.length);
     let detailedNearVehicles = 0;
     let nearestTrafficWidth = 0;
@@ -134,10 +156,7 @@ export class CanvasRenderer {
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, LOGICAL_WIDTH, HORIZON_Y + 130);
 
-    const phaseOffsets: Record<GameState['phase'], number> = {
-      DAWN: 0.08, MORNING: 0.22, DAY: 0.48, SUNSET: 0.82, DUSK: 0.95, NIGHT: 1.2, LATE_NIGHT: -0.15,
-    };
-    const sunProgress = phaseOffsets[state.phase] + state.phaseProgress * 0.12;
+    const sunProgress = SUN_PHASE_OFFSETS[state.phase] + state.phaseProgress * 0.12;
     const sunX = LOGICAL_WIDTH * (0.08 + sunProgress * 0.78);
     const sunY = HORIZON_Y - Math.sin(Math.max(0, Math.min(1, sunProgress)) * Math.PI) * 145;
     const sunGlow = ctx.createRadialGradient(sunX, sunY, 2, sunX, sunY, 55);
@@ -213,87 +232,6 @@ export class CanvasRenderer {
     ctx.fillRect(0, HORIZON_Y - 36, LOGICAL_WIDTH, 95);
   }
 
-  private drawRoad(state: GameState): void {
-    const ctx = this.context;
-    const palette = scenePaletteForPhase(state.phase, state.phaseProgress);
-    const iceIntensity = state.weather === 'ICE' ? state.weatherIntensity : 0;
-    const road = mixSceneColor(palette.road, '#a9c1c8', iceIntensity * 0.72);
-    const roadAlt = mixSceneColor(palette.roadAlt, '#819da8', iceIntensity * 0.68);
-    const roadLine = mixSceneColor(palette.roadLine, '#e9fbff', iceIntensity * 0.65);
-    const segmentLength = 7;
-    const scroll = state.distanceMeters % (segmentLength * 2);
-
-    for (let farZ = ROAD_VISIBLE_DISTANCE; farZ > 0; farZ -= segmentLength) {
-      const nearZ = Math.max(0, farZ - segmentLength);
-      const far = projectRoadPoint(farZ, 0, state.distanceMeters);
-      const near = projectRoadPoint(nearZ, 0, state.distanceMeters);
-      const band = Math.floor((farZ + scroll) / segmentLength);
-
-      ctx.fillStyle = band % 2 === 0 ? palette.ground : palette.groundAlt;
-      ctx.fillRect(0, far.y, LOGICAL_WIDTH, Math.max(1.5, near.y - far.y + 1));
-
-      const shoulderFar = far.roadHalfWidth * 1.07;
-      const shoulderNear = near.roadHalfWidth * 1.07;
-      this.fillQuad(
-        far.centerX - shoulderFar, far.y, far.centerX + shoulderFar, far.y,
-        near.centerX + shoulderNear, near.y, near.centerX - shoulderNear, near.y,
-        band % 2 === 0
-          ? mixSceneColor('#d9d5c8', '#c8e2e8', iceIntensity * 0.7)
-          : mixSceneColor('#b64c43', '#7fa1ad', iceIntensity * 0.75),
-      );
-
-      this.fillQuad(
-        far.centerX - far.roadHalfWidth, far.y, far.centerX + far.roadHalfWidth, far.y,
-        near.centerX + near.roadHalfWidth, near.y, near.centerX - near.roadHalfWidth, near.y,
-        band % 2 === 0 ? road : roadAlt,
-      );
-
-      if (band % 3 !== 0) {
-        for (const lane of [-0.5, 0, 0.5]) {
-          const lineWidthFar = Math.max(0.6, far.scale * 4.5);
-          const lineWidthNear = Math.max(0.8, near.scale * 5.5);
-          const farX = far.centerX + lane * far.roadHalfWidth;
-          const nearX = near.centerX + lane * near.roadHalfWidth;
-          this.fillQuad(
-            farX - lineWidthFar, far.y, farX + lineWidthFar, far.y,
-            nearX + lineWidthNear, near.y, nearX - lineWidthNear, near.y,
-            `${roadLine}bd`,
-          );
-        }
-      }
-    }
-    this.drawRoadTexture(state, iceIntensity);
-  }
-
-  private drawRoadTexture(state: GameState, iceIntensity: number): void {
-    if (this.legacyAmount >= 0.58 || !this.graphics.roadTexture) return;
-    const texture = this.assets.get('asphalt');
-    if (!texture) return;
-    this.asphaltPattern ??= this.context.createPattern(texture, 'repeat') ?? undefined;
-    if (!this.asphaltPattern) return;
-
-    const ctx = this.context;
-    ctx.save();
-    ctx.beginPath();
-    for (let z = ROAD_VISIBLE_DISTANCE; z >= 0; z -= 14) {
-      const point = projectRoadPoint(z, -1, state.distanceMeters);
-      ctx.lineTo(point.x, point.y);
-    }
-    for (let z = 0; z <= ROAD_VISIBLE_DISTANCE; z += 14) {
-      const point = projectRoadPoint(z, 1, state.distanceMeters);
-      ctx.lineTo(point.x, point.y);
-    }
-    ctx.closePath();
-    ctx.clip();
-    const scroll = (state.distanceMeters * 0.72) % texture.naturalHeight;
-    ctx.translate(0, scroll);
-    ctx.globalCompositeOperation = 'soft-light';
-    ctx.globalAlpha = 0.095 * (1 - iceIntensity * 0.72);
-    ctx.fillStyle = this.asphaltPattern;
-    ctx.fillRect(0, -texture.naturalHeight - scroll, LOGICAL_WIDTH, LOGICAL_HEIGHT + texture.naturalHeight);
-    ctx.restore();
-  }
-
   private drawRoadside(state: GameState): void {
     const ctx = this.context;
     const isNight = state.phase === 'NIGHT' || state.phase === 'LATE_NIGHT';
@@ -327,8 +265,7 @@ export class CanvasRenderer {
     const width = Math.max(2, point.scale * 84 * kindScale);
     const assetName: VisualAssetName =
       vehicle.kind === 'TRUCK' || vehicle.kind === 'VAN' ? 'trafficTruck' : 'trafficSedan';
-    const asset =
-      detailed && this.legacyAmount < 0.62 ? this.assets.get(assetName) : undefined;
+    const asset = detailed && this.legacyAmount < 0.62 ? this.assets.get(assetName) : undefined;
     const assetRatio = asset ? asset.naturalHeight / asset.naturalWidth : undefined;
     const height = Math.max(
       3,
@@ -362,9 +299,7 @@ export class CanvasRenderer {
 
     if (asset) {
       const dayFilter = this.trafficColorFilter(vehicle.color);
-      ctx.filter = isNight
-        ? 'brightness(.2) saturate(.65) contrast(1.15)'
-        : dayFilter;
+      ctx.filter = isNight ? 'brightness(.2) saturate(.65) contrast(1.15)' : dayFilter;
       ctx.drawImage(asset, x, y, width, height);
       ctx.filter = 'none';
 
@@ -414,15 +349,7 @@ export class CanvasRenderer {
   }
 
   private trafficColorFilter(color: string): string {
-    const filters: Record<string, string> = {
-      '#e8edf2': 'brightness(1.03) saturate(.7)',
-      '#cf3348': 'sepia(.55) saturate(3.2) hue-rotate(305deg) brightness(.88)',
-      '#f1a63b': 'sepia(.72) saturate(3.1) hue-rotate(350deg) brightness(.96)',
-      '#347ea8': 'sepia(.4) saturate(2.4) hue-rotate(155deg) brightness(.84)',
-      '#7f8b94': 'brightness(.78) saturate(.42)',
-      '#6b527f': 'sepia(.38) saturate(1.8) hue-rotate(215deg) brightness(.72)',
-    };
-    return filters[color] ?? 'none';
+    return TRAFFIC_COLOR_FILTERS[color] ?? 'none';
   }
 
   private drawPlayer(state: GameState, timeSeconds: number): void {
@@ -503,9 +430,23 @@ export class CanvasRenderer {
     ctx.fill();
 
     ctx.fillStyle = '#ff3656';
-    roundedRect(ctx, x + width * 0.126, baseY - height * 0.366, width * 0.221, height * 0.134, width * 0.026);
+    roundedRect(
+      ctx,
+      x + width * 0.126,
+      baseY - height * 0.366,
+      width * 0.221,
+      height * 0.134,
+      width * 0.026,
+    );
     ctx.fill();
-    roundedRect(ctx, x + width * 0.653, baseY - height * 0.366, width * 0.221, height * 0.134, width * 0.026);
+    roundedRect(
+      ctx,
+      x + width * 0.653,
+      baseY - height * 0.366,
+      width * 0.221,
+      height * 0.134,
+      width * 0.026,
+    );
     ctx.fill();
     ctx.fillStyle = '#d8f7ff';
     ctx.fillRect(centerX - width * 0.1, baseY - height * 0.25, width * 0.2, height * 0.045);
@@ -651,21 +592,5 @@ export class CanvasRenderer {
     ctx.fillStyle = `rgba(8, 29, 34, ${this.legacyAmount * 0.12})`;
     ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
     ctx.restore();
-  }
-
-  private fillQuad(
-    x1: number, y1: number, x2: number, y2: number,
-    x3: number, y3: number, x4: number, y4: number,
-    color: string,
-  ): void {
-    const ctx = this.context;
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.lineTo(x3, y3);
-    ctx.lineTo(x4, y4);
-    ctx.closePath();
-    ctx.fill();
   }
 }

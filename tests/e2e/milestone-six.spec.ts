@@ -70,14 +70,15 @@ test.describe('Milestone 6 optimization and final validation', () => {
     await waitForAssets(page);
   });
 
-  test('enforces graphics budgets and supports manual or automatic profiles', async ({ page }) => {
+  test('enforces graphics budgets without changing simulation density', async ({ page }) => {
     await page.locator('[data-action="graphics-profile"]').selectOption('HIGH');
-    await page.evaluate(() => {
+    const highTrafficCount = await page.evaluate(() => {
       const contract = (window as Window & { __roadEnduranceTest?: TestContract })
         .__roadEnduranceTest;
       if (!contract) throw new Error('Test contract was not installed.');
       contract.start('AUTHENTIC_ENDURANCE');
       contract.step(0.1);
+      return contract.getState().trafficCount;
     });
 
     const canvas = page.locator('#game-canvas');
@@ -88,14 +89,18 @@ test.describe('Milestone 6 optimization and final validation', () => {
     }));
     expect(highBudget.visible).toBeLessThanOrEqual(8);
     expect(highBudget.detailed).toBeLessThanOrEqual(3);
+    expect(highTrafficCount).toBe(10);
 
-    await page.evaluate(() => {
+    const lowTrafficCount = await page.evaluate(() => {
       const contract = (window as Window & { __roadEnduranceTest?: TestContract })
         .__roadEnduranceTest;
       if (!contract) throw new Error('Test contract was not installed.');
       contract.setGraphicsProfile('LOW');
+      return contract.getState().trafficCount;
     });
     await expect(canvas).toHaveAttribute('data-graphics-profile', 'LOW');
+    expect(lowTrafficCount).toBe(highTrafficCount);
+
     const platform = await page.evaluate(() => {
       const contract = (window as Window & { __roadEnduranceTest?: TestContract })
         .__roadEnduranceTest;
@@ -109,6 +114,7 @@ test.describe('Milestone 6 optimization and final validation', () => {
     await page.keyboard.press('F3');
     await expect(page.locator('[data-diagnostic="internal"]')).toHaveText('1280 × 720');
     await expect(page.locator('[data-diagnostic="profile"]')).toHaveText('LOW');
+    await expect(page.locator('[data-diagnostic="traffic"]')).toHaveText('10 ACTIVE');
     await expect(page.locator('[data-diagnostic="effects"]')).toContainText('42%');
   });
 

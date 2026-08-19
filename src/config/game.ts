@@ -3,6 +3,10 @@ export const LOGICAL_HEIGHT = 720;
 export const HORIZON_Y = 224;
 export const ROAD_VISIBLE_DISTANCE = 280;
 
+// Simulation density is intentionally independent from rendering quality.
+// Graphics profiles may decide how many vehicles to draw, never how many exist in the race.
+export const SIMULATION_TRAFFIC_COUNT = 10;
+
 export const GAME_RULES = {
   authenticFirstDayTarget: 200,
   authenticLaterDayTarget: 300,
@@ -55,7 +59,6 @@ export type GraphicsProfile = 'LOW' | 'MEDIUM' | 'HIGH';
 
 export interface GraphicsSettings {
   profile: GraphicsProfile;
-  maxTraffic: number;
   maxVisibleTraffic: number;
   highDetailVehicles: number;
   particleScale: number;
@@ -65,15 +68,15 @@ export interface GraphicsSettings {
 
 export const GRAPHICS_PROFILES: Record<GraphicsProfile, GraphicsSettings> = {
   LOW: {
-    profile: 'LOW', maxTraffic: 6, maxVisibleTraffic: 6, highDetailVehicles: 1,
+    profile: 'LOW', maxVisibleTraffic: 6, highDetailVehicles: 1,
     particleScale: 0.42, roadTexture: false, shadows: false,
   },
   MEDIUM: {
-    profile: 'MEDIUM', maxTraffic: 8, maxVisibleTraffic: 8, highDetailVehicles: 2,
+    profile: 'MEDIUM', maxVisibleTraffic: 8, highDetailVehicles: 2,
     particleScale: 0.72, roadTexture: true, shadows: false,
   },
   HIGH: {
-    profile: 'HIGH', maxTraffic: 10, maxVisibleTraffic: 8, highDetailVehicles: 3,
+    profile: 'HIGH', maxVisibleTraffic: 8, highDetailVehicles: 3,
     particleScale: 1, roadTexture: true, shadows: true,
   },
 };

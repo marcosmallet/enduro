@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { GRAPHICS_PROFILES } from '../../src/config/game';
+import { GRAPHICS_PROFILES, SIMULATION_TRAFFIC_COUNT } from '../../src/config/game';
 import { GraphicsManager } from '../../src/performance/GraphicsManager';
 
 describe('graphics profiles and dynamic effect reduction', () => {
-  it('keeps every profile inside the visible and high-quality vehicle budgets', () => {
+  it('keeps rendering budgets inside the fixed simulation traffic pool', () => {
+    expect(SIMULATION_TRAFFIC_COUNT).toBe(10);
+
     for (const settings of Object.values(GRAPHICS_PROFILES)) {
       expect(settings.maxVisibleTraffic).toBeLessThanOrEqual(8);
+      expect(settings.maxVisibleTraffic).toBeLessThanOrEqual(SIMULATION_TRAFFIC_COUNT);
       expect(settings.highDetailVehicles).toBeLessThanOrEqual(3);
-      expect(settings.maxVisibleTraffic).toBeLessThanOrEqual(settings.maxTraffic);
+      expect(settings).not.toHaveProperty('maxTraffic');
     }
 
     expect(GRAPHICS_PROFILES.LOW.particleScale).toBeLessThan(
