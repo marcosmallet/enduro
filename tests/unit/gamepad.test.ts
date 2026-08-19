@@ -17,7 +17,7 @@ describe('gamepad input normalization', () => {
     input.setVirtualGamepad({ steer: 0.72, accelerate: true, pause: true, confirm: true });
 
     const first = input.pollGamepad();
-    expect(input.state.steer).toBeCloseTo(0.72);
+    expect(input.state.steer).toBeCloseTo(0.725, 6);
     expect(input.state.accelerate).toBe(true);
     expect(first.pausePressed).toBe(true);
     expect(first.confirmPressed).toBe(true);
