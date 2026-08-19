@@ -11,6 +11,7 @@ export type DayPhase =
   | 'NIGHT'
   | 'LATE_NIGHT';
 export type VehicleKind = 'COMPACT' | 'SEDAN' | 'SPORT' | 'UTILITY' | 'VAN' | 'TRUCK';
+export type TrafficManeuverPhase = 'IDLE' | 'TELEGRAPH' | 'CHANGING';
 
 export interface InputState {
   accelerate: boolean;
@@ -33,6 +34,13 @@ export interface TrafficVehicle {
   color: string;
   apparentScale: number;
   lod: 0 | 1 | 2;
+  maneuverPhase?: TrafficManeuverPhase;
+  maneuverTargetLane?: number;
+  maneuverFromLateral?: number;
+  maneuverProgress?: number;
+  maneuverTimerSeconds?: number;
+  maneuverCooldownSeconds?: number;
+  maneuverAttempt?: number;
 }
 
 export interface GameState {
