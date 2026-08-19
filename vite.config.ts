@@ -9,7 +9,8 @@ export default defineConfig(({ mode }) => {
     process?: { env?: Record<string, string | undefined> };
   }).process?.env ?? {};
   const repositoryName = processEnv.GITHUB_REPOSITORY?.split('/')[1] ?? '';
-  const isGitHubPages = processEnv.GITHUB_ACTIONS === 'true' && Boolean(repositoryName);
+  const isGitHubPages =
+    mode === 'public' && processEnv.GITHUB_ACTIONS === 'true' && Boolean(repositoryName);
   const base = isGitHubPages ? `/${repositoryName}/` : '/';
 
   return {

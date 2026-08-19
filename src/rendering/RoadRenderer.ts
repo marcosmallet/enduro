@@ -6,7 +6,7 @@ import {
 } from '../config/game';
 import type { GraphicsSettings } from '../config/game';
 import type { GameState } from '../game/types';
-import { AssetLibrary } from './AssetLibrary';
+import type { AssetLibrary } from './AssetLibrary';
 import { mixSceneColor, scenePaletteForPhase } from './palette';
 import { projectRoadPoint } from './projection';
 
