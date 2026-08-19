@@ -1,0 +1,1 @@
+Temporary diagnostic probe for GitHub Actions. This branch is not intended for merge.
