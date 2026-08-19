@@ -124,7 +124,7 @@ test.describe('Accessible gameplay status', () => {
     const restartButton = result.locator('[data-action="restart"]');
     const menuButton = result.locator('[data-action="menu"]');
     await expect(result).toBeVisible();
-    await expect(result).toHaveAccessibleName('VICTORY');
+    await expect(result).toHaveAccessibleName('TARGET REACHED');
     await expect(restartButton).toBeFocused();
 
     await page.keyboard.press('Tab');
