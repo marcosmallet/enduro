@@ -1,12 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { TestContract } from '../../src/GameController';
 
-function testContract(): TestContract {
-  const contract = (window as Window & { __roadEnduranceTest?: TestContract }).__roadEnduranceTest;
-  if (!contract) throw new Error('Test contract was not installed.');
-  return contract;
-}
-
 test.describe('Accessible gameplay status', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?test=1');
@@ -30,7 +24,9 @@ test.describe('Accessible gameplay status', () => {
     expect(liveRegionOwnership).toEqual({ speed: false, distance: false, carsLeft: false });
 
     await page.evaluate(() => {
-      const contract = testContract();
+      const contract = (window as Window & { __roadEnduranceTest?: TestContract })
+        .__roadEnduranceTest;
+      if (!contract) throw new Error('Test contract was not installed.');
       contract.start('POC_QUICK_RACE');
       contract.setInput({ accelerate: true, brake: false, steer: 0 });
       contract.step(2);
@@ -50,20 +46,32 @@ test.describe('Accessible gameplay status', () => {
       await expect(region).toHaveAttribute('aria-atomic', 'true');
     }
 
-    await page.evaluate(() => testContract().start('AUTHENTIC_ENDURANCE'));
+    await page.evaluate(() => {
+      const contract = (window as Window & { __roadEnduranceTest?: TestContract })
+        .__roadEnduranceTest;
+      if (!contract) throw new Error('Test contract was not installed.');
+      contract.start('AUTHENTIC_ENDURANCE');
+    });
     await page.keyboard.press('Escape');
     await expect(page.locator('.pause-modal')).toBeVisible();
     await expect(page.locator('#pause-title')).toHaveText('PAUSADO');
 
     await page.keyboard.press('Escape');
     await page.evaluate(() => {
-      const contract = testContract();
+      const contract = (window as Window & { __roadEnduranceTest?: TestContract })
+        .__roadEnduranceTest;
+      if (!contract) throw new Error('Test contract was not installed.');
       contract.completeGoal();
     });
     await expect(page.locator('.goal-toast')).toBeVisible();
     await expect(page.locator('.goal-toast')).toContainText('META CONCLUÍDA');
 
-    await page.evaluate(() => testContract().finishDay());
+    await page.evaluate(() => {
+      const contract = (window as Window & { __roadEnduranceTest?: TestContract })
+        .__roadEnduranceTest;
+      if (!contract) throw new Error('Test contract was not installed.');
+      contract.finishDay();
+    });
     await expect(page.locator('.day-toast')).toBeVisible();
     await expect(page.locator('.day-toast')).toContainText('NOVO DIA');
     await expect(page.locator('[data-hud="new-day"]')).toHaveText('DIA 2');
@@ -71,16 +79,31 @@ test.describe('Accessible gameplay status', () => {
 
   test('keeps discrete status localization on the existing i18n path', async ({ page }) => {
     await page.locator('[data-action="language"]').click();
-    await page.evaluate(() => testContract().start('AUTHENTIC_ENDURANCE'));
+    await page.evaluate(() => {
+      const contract = (window as Window & { __roadEnduranceTest?: TestContract })
+        .__roadEnduranceTest;
+      if (!contract) throw new Error('Test contract was not installed.');
+      contract.start('AUTHENTIC_ENDURANCE');
+    });
 
     await page.keyboard.press('Escape');
     await expect(page.locator('#pause-title')).toHaveText('PAUSED');
     await page.keyboard.press('Escape');
 
-    await page.evaluate(() => testContract().completeGoal());
+    await page.evaluate(() => {
+      const contract = (window as Window & { __roadEnduranceTest?: TestContract })
+        .__roadEnduranceTest;
+      if (!contract) throw new Error('Test contract was not installed.');
+      contract.completeGoal();
+    });
     await expect(page.locator('.goal-toast')).toContainText('GOAL COMPLETE');
 
-    await page.evaluate(() => testContract().finishDay());
+    await page.evaluate(() => {
+      const contract = (window as Window & { __roadEnduranceTest?: TestContract })
+        .__roadEnduranceTest;
+      if (!contract) throw new Error('Test contract was not installed.');
+      contract.finishDay();
+    });
     await expect(page.locator('.day-toast')).toContainText('NEW DAY');
     await expect(page.locator('[data-hud="new-day"]')).toHaveText('DAY 2');
   });
