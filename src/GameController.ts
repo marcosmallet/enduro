@@ -443,7 +443,7 @@ export class GameController {
   private readonly frame = (now: number): void => {
     const delta = Math.min(0.05, (now - this.lastFrameTime) / 1000);
     this.lastFrameTime = now;
-    const gamepadActions = this.input.pollGamepad();
+    const gamepadActions = this.input.pollGamepad(now);
     this.handleGamepadActions(gamepadActions);
     this.updateVisualPresentation(now);
     if (!this.testMode) {
@@ -451,9 +451,10 @@ export class GameController {
         this.simulation.update(
           { accelerate: true, brake: false, steer: Math.sin(now / 1800) * 0.4 },
           delta,
+          now,
         );
       } else {
-        this.simulation.update(this.input.state, delta);
+        this.simulation.update(this.input.state, delta, now);
       }
     }
     this.audio.update(
