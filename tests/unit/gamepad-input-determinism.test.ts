@@ -11,11 +11,25 @@ interface RunResult {
   speedKph: number;
 }
 
+type AnalogTrajectory = (seconds: number) => number;
+
 function analogTrajectory(seconds: number): number {
   return Math.sin(seconds * Math.PI * 0.7) * 0.72;
 }
 
-function runAtPollingRate(hz: number): RunResult {
+function deadZoneTrajectory(seconds: number): number {
+  if (seconds < 1) return 0.14 + seconds * 0.08;
+  if (seconds < 2) return 0.18 + Math.sin((seconds - 1) * Math.PI * 8) * 0.025;
+  if (seconds < 3) return 0.22 - (seconds - 2) * 0.44;
+  if (seconds < 4) return -0.18 + Math.sin((seconds - 3) * Math.PI * 8) * 0.025;
+  return -0.22 + (seconds - 4) * 0.08;
+}
+
+function runAtPollingRate(
+  hz: number,
+  trajectory: AnalogTrajectory = analogTrajectory,
+  durationSeconds = 4,
+): RunResult {
   document.body.innerHTML = '<main id="root"></main>';
   const root = document.querySelector<HTMLElement>('#root');
   if (!root) throw new Error('Expected test root.');
@@ -25,14 +39,13 @@ function runAtPollingRate(hz: number): RunResult {
   state.traffic = [];
   const simulation = new Simulation(state);
   const frameSeconds = 1 / hz;
-  const durationSeconds = 4;
   let nowMs = 0;
 
   for (let elapsed = 0; elapsed < durationSeconds - 1e-9; elapsed += frameSeconds) {
     input.setVirtualGamepad({
       connected: true,
       accelerate: true,
-      steer: analogTrajectory(elapsed),
+      steer: trajectory(elapsed),
     });
     input.pollGamepad(nowMs);
     simulation.update(input.state, frameSeconds, nowMs);
@@ -55,6 +68,41 @@ describe('real-input analog gamepad determinism', () => {
     expect(quantizeAnalogSteer(-2)).toBe(-1);
   });
 
+  it('has one deterministic first-response step at each dead-zone crossing without stateful chatter', () => {
+    const positiveSweep = [0.16, 0.17, 0.179, 0.18, 0.181, 0.19, 0.205];
+    const negativeSweep = positiveSweep.map((value) => -value);
+
+    expect(positiveSweep.map(quantizeAnalogSteer)).toEqual([
+      0,
+      0,
+      0,
+      0.2,
+      0.2,
+      0.2,
+      0.2,
+    ]);
+    expect(negativeSweep.map(quantizeAnalogSteer)).toEqual([
+      0,
+      0,
+      0,
+      -0.2,
+      -0.2,
+      -0.2,
+      -0.2,
+    ]);
+
+    const centerOscillation = [0.181, 0.179, 0.181, 0, -0.181, -0.179, -0.181];
+    expect(centerOscillation.map(quantizeAnalogSteer)).toEqual([
+      0.2,
+      0,
+      0.2,
+      0,
+      -0.2,
+      0,
+      -0.2,
+    ]);
+  });
+
   it('keeps a continuous physical steering trajectory equivalent across 30/60/120 Hz polling', () => {
     const at30 = runAtPollingRate(30);
     const at60 = runAtPollingRate(60);
@@ -66,6 +114,19 @@ describe('real-input analog gamepad determinism', () => {
       // small fraction of a lane while speed remains effectively identical.
       expect(Math.abs(result.playerX - at60.playerX)).toBeLessThan(0.06);
       expect(Math.abs(result.lateralVelocity - at60.lateralVelocity)).toBeLessThan(0.09);
+      expect(Math.abs(result.speedKph - at60.speedKph)).toBeLessThan(0.25);
+    }
+  });
+
+  it('keeps slow sweeps and small dead-zone oscillations materially equivalent at 30/60/120 Hz', () => {
+    const durationSeconds = 5;
+    const at30 = runAtPollingRate(30, deadZoneTrajectory, durationSeconds);
+    const at60 = runAtPollingRate(60, deadZoneTrajectory, durationSeconds);
+    const at120 = runAtPollingRate(120, deadZoneTrajectory, durationSeconds);
+
+    for (const result of [at30, at120]) {
+      expect(Math.abs(result.playerX - at60.playerX)).toBeLessThan(0.04);
+      expect(Math.abs(result.lateralVelocity - at60.lateralVelocity)).toBeLessThan(0.06);
       expect(Math.abs(result.speedKph - at60.speedKph)).toBeLessThan(0.25);
     }
   });
