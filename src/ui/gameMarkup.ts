@@ -5,7 +5,7 @@ export function createGameMarkup(): string {
       <div class="vignette" aria-hidden="true"></div>
       <div class="film-grain" aria-hidden="true"></div>
 
-      <section class="hud" aria-live="polite" hidden>
+      <section class="hud" hidden>
         <div class="hud-cluster hud-primary">
           <span class="hud-kicker" data-i18n="day">DIA</span>
           <strong class="hud-value" data-hud="day">1</strong>
@@ -93,7 +93,7 @@ export function createGameMarkup(): string {
         </style>
       </section>
 
-      <section class="modal pause-modal" hidden aria-labelledby="pause-title">
+      <section class="modal pause-modal" hidden aria-labelledby="pause-title" role="status" aria-live="polite" aria-atomic="true">
         <span class="modal-kicker">SYSTEM / HOLD</span>
         <h2 id="pause-title" data-i18n="paused"></h2>
         <div class="modal-actions">
@@ -104,8 +104,8 @@ export function createGameMarkup(): string {
         </div>
       </section>
 
-      <section class="modal result-modal" hidden aria-labelledby="result-title">
-        <span class="modal-kicker">RUN COMPLETE</span>
+      <section class="modal result-modal" hidden aria-labelledby="result-title" role="status" aria-live="polite" aria-atomic="true">
+        <span class="modal-kicker" data-result="kicker">RUN COMPLETE</span>
         <h2 id="result-title" data-result="title"></h2>
         <p data-result="summary"></p>
         <div class="modal-actions">
@@ -136,8 +136,8 @@ export function createGameMarkup(): string {
         </dl>
       </aside>
 
-      <div class="goal-toast" hidden><span>✓</span><strong data-i18n="goalComplete"></strong></div>
-      <div class="day-toast" hidden>
+      <div class="goal-toast" hidden role="status" aria-live="polite" aria-atomic="true"><span aria-hidden="true">✓</span><strong data-i18n="goalComplete"></strong></div>
+      <div class="day-toast" hidden role="status" aria-live="polite" aria-atomic="true">
         <span data-i18n="newDay">NOVO DIA</span>
         <strong data-hud="new-day">DIA 2</strong>
       </div>
