@@ -1,5 +1,6 @@
 import type { GameState } from '../game/types';
 import {
+  advanceAudioLoadReference,
   audioCuesBetween,
   continuousAudioMix,
   snapshotAudioState,
@@ -54,6 +55,7 @@ export class AudioEngine {
   private musicFilter?: BiquadFilterNode;
   private noiseBuffer?: AudioBuffer;
   private previous?: AudioSnapshot;
+  private loadReference?: AudioSnapshot;
   private currentSettings = loadSettings();
 
   get settings(): AudioSettings {
@@ -74,6 +76,7 @@ export class AudioEngine {
 
   resetState(state: GameState): void {
     this.previous = snapshotAudioState(state);
+    this.loadReference = undefined;
   }
 
   update(state: GameState, scene: AudioScene): void {
@@ -83,8 +86,9 @@ export class AudioEngine {
       return;
     }
 
+    this.loadReference = advanceAudioLoadReference(current, this.previous, this.loadReference);
     const now = this.context.currentTime;
-    const mix = continuousAudioMix(current, this.previous);
+    const mix = continuousAudioMix(current, this.loadReference);
     const driveLevel = scene === 'DRIVE' ? 1 : scene === 'MENU' ? 0.48 : 0.12;
     this.engineOscillator?.frequency.setTargetAtTime(mix.engineFrequency, now, 0.055);
     this.engineHarmonic?.frequency.setTargetAtTime(mix.engineFrequency * 2.01, now, 0.055);
