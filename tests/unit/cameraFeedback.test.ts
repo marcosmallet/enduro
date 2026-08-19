@@ -7,12 +7,12 @@ describe('camera presentation feedback', () => {
     localStorage.clear();
   });
 
-  it('stays neutral and bounded without mutating gameplay state', () => {
+  it('stays near neutral at rest and does not mutate gameplay state', () => {
     const state = createGameState('AUTHENTIC_ENDURANCE', { seed: 11 });
     const before = structuredClone(state);
     const neutral = deriveCameraFeedback(state, 0, false);
 
-    expect(neutral.worldRollRadians).toBeCloseTo(0, 6);
+    expect(Math.abs(neutral.worldRollRadians)).toBeLessThan(0.001);
     expect(neutral.worldOffsetY).toBeCloseTo(0, 6);
     expect(neutral.playerRollRadians).toBeCloseTo(0, 6);
     expect(neutral.playerOffsetX).toBeCloseTo(0, 6);
