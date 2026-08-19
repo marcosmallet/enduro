@@ -70,6 +70,9 @@ test.describe('Traffic player-facing fairness', () => {
       if (!contract) throw new Error('Test contract was not installed.');
       contract.start('AUTHENTIC_ENDURANCE');
       contract.setInput({ accelerate: false, brake: false, steer: 0 });
+      // Keep one candidate stationary in the readable mid-field while the rest of traffic
+      // naturally clears its corridor. Its seeded cooldown/intent remain production-owned.
+      contract.placeVehicle({ z: 120, lateral: -0.68, speedKph: 0 });
     });
 
     const cue = await advanceToReadableTelegraph(page);
