@@ -137,6 +137,8 @@ export class GameController {
   private currentMode: GameMode = 'POC_QUICK_RACE';
   private inMenu = true;
   private diagnosticsVisible = false;
+  private activeModal?: HTMLElement;
+  private modalReturnFocus?: HTMLElement;
   private lastFrameTime = performance.now();
   private frameCounter = 0;
   private frameAccumulator = 0;
@@ -254,6 +256,7 @@ export class GameController {
       setHidden(requiredElement<HTMLButtonElement>(this.root, '[data-action="install"]'), true);
     });
     window.addEventListener('keydown', (event) => {
+      if (event.code === 'Tab' && this.trapModalFocus(event)) return;
       if (event.repeat) return;
       if (event.code === 'Escape' && !this.inMenu) this.togglePause(this.state.screen !== 'PAUSED');
       if (event.code === 'KeyR' && !this.inMenu) this.start(this.currentMode);
@@ -281,6 +284,87 @@ export class GameController {
     this.syncFullscreenButton();
     requiredElement<HTMLSelectElement>(this.root, '[data-action="graphics-profile"]').value =
       this.graphics.selection;
+  }
+
+  private modalFocusableElements(modal: HTMLElement): HTMLElement[] {
+    return Array.from(
+      modal.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((element) => !element.hidden);
+  }
+
+  private trapModalFocus(event: KeyboardEvent): boolean {
+    const modal = this.activeModal;
+    if (!modal || modal.hidden) return false;
+    const focusable = this.modalFocusableElements(modal);
+    if (focusable.length === 0) {
+      event.preventDefault();
+      modal.focus({ preventScroll: true });
+      return true;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (!first || !last) return false;
+    const active = document.activeElement;
+    if (!modal.contains(active)) {
+      event.preventDefault();
+      first.focus({ preventScroll: true });
+      return true;
+    }
+    if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus({ preventScroll: true });
+      return true;
+    }
+    if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus({ preventScroll: true });
+      return true;
+    }
+    return false;
+  }
+
+  private setModalBackgroundInert(inert: boolean): void {
+    for (const selector of ['.menu', '.hud', '.touch-controls', '#game-canvas']) {
+      requiredElement<HTMLElement>(this.root, selector).inert = inert;
+    }
+  }
+
+  private activateModal(
+    modal: HTMLElement,
+    preferredSelector: string,
+    rememberReturnFocus: boolean,
+  ): void {
+    if (this.activeModal === modal) return;
+    if (rememberReturnFocus) {
+      const active = document.activeElement;
+      this.modalReturnFocus =
+        active instanceof HTMLElement && this.root.contains(active) ? active : undefined;
+    }
+    this.activeModal = modal;
+    this.setModalBackgroundInert(true);
+    queueMicrotask(() => {
+      if (this.activeModal !== modal || modal.hidden) return;
+      const preferred = modal.querySelector<HTMLElement>(preferredSelector);
+      (preferred ?? this.modalFocusableElements(modal)[0] ?? modal).focus({ preventScroll: true });
+    });
+  }
+
+  private deactivateModal(restoreFocus: boolean): void {
+    if (!this.activeModal) return;
+    this.activeModal = undefined;
+    this.setModalBackgroundInert(false);
+    const returnFocus = this.modalReturnFocus;
+    this.modalReturnFocus = undefined;
+    if (!restoreFocus) return;
+    queueMicrotask(() => {
+      if (returnFocus && this.root.contains(returnFocus) && !returnFocus.closest('[hidden]')) {
+        returnFocus.focus({ preventScroll: true });
+      } else {
+        this.canvas.focus({ preventScroll: true });
+      }
+    });
   }
 
   private startFromUserGesture(mode: GameMode): void {
@@ -410,6 +494,8 @@ export class GameController {
     setHidden(requiredElement<HTMLElement>(this.root, '.result-modal'), true);
     setHidden(requiredElement<HTMLElement>(this.root, '.audio-panel'), true);
     requiredElement<HTMLElement>(this.root, '.touch-controls').dataset.active = 'true';
+    this.deactivateModal(false);
+    this.canvas.focus({ preventScroll: true });
     this.syncView();
   }
 
@@ -429,14 +515,23 @@ export class GameController {
     setHidden(requiredElement<HTMLElement>(this.root, '.pause-modal'), true);
     setHidden(requiredElement<HTMLElement>(this.root, '.result-modal'), true);
     requiredElement<HTMLElement>(this.root, '.touch-controls').dataset.active = 'false';
+    this.deactivateModal(false);
+    queueMicrotask(() => {
+      requiredElement<HTMLButtonElement>(this.root, '[data-mode="AUTHENTIC_ENDURANCE"]').focus({
+        preventScroll: true,
+      });
+    });
   }
 
   private togglePause(paused: boolean): void {
     if (this.inMenu || this.state.screen === 'VICTORY' || this.state.screen === 'GAME_OVER') return;
     this.state.screen = paused ? 'PAUSED' : 'PLAYING';
     this.input.reset();
-    setHidden(requiredElement<HTMLElement>(this.root, '.pause-modal'), !paused);
+    const modal = requiredElement<HTMLElement>(this.root, '.pause-modal');
+    setHidden(modal, !paused);
     requiredElement<HTMLElement>(this.root, '.touch-controls').dataset.active = paused ? 'false' : 'true';
+    if (paused) this.activateModal(modal, '[data-action="continue"]', true);
+    else this.deactivateModal(true);
     this.syncView();
   }
 
@@ -603,6 +698,7 @@ export class GameController {
         this.resultSummary(),
       );
       requiredElement<HTMLElement>(this.root, '.touch-controls').dataset.active = 'false';
+      this.activateModal(modal, '[data-action="restart"]', false);
     }
     this.syncDiagnostics();
   }
