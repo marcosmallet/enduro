@@ -84,7 +84,7 @@ export class AudioEngine {
     }
 
     const now = this.context.currentTime;
-    const mix = continuousAudioMix(current);
+    const mix = continuousAudioMix(current, this.previous);
     const driveLevel = scene === 'DRIVE' ? 1 : scene === 'MENU' ? 0.48 : 0.12;
     this.engineOscillator?.frequency.setTargetAtTime(mix.engineFrequency, now, 0.055);
     this.engineHarmonic?.frequency.setTargetAtTime(mix.engineFrequency * 2.01, now, 0.055);
