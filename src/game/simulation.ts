@@ -5,16 +5,55 @@ import { SeededRandom } from './random';
 import { updateTraffic } from './traffic';
 import type { GameState, InputState } from './types';
 
+export const SIMULATION_STEP_SECONDS = 1 / 60;
+const MAX_FRAME_DELTA_SECONDS = 0.05;
+const MAX_STEPS_PER_UPDATE = 3;
+const STEP_EPSILON = 1e-9;
+
 export class Simulation {
   private readonly random: SeededRandom;
+  private accumulatorSeconds = 0;
 
   constructor(private readonly state: GameState) {
     this.random = new SeededRandom(state.seed ^ 0xa511e9b3);
   }
 
   update(input: InputState, deltaSeconds: number): void {
-    if (this.state.screen !== 'PLAYING') return;
-    const dt = Math.min(deltaSeconds, 0.05);
+    if (this.state.screen !== 'PLAYING') {
+      this.accumulatorSeconds = 0;
+      return;
+    }
+
+    const frameDelta = Math.max(0, Math.min(deltaSeconds, MAX_FRAME_DELTA_SECONDS));
+    this.accumulatorSeconds += frameDelta;
+    let steps = 0;
+
+    while (
+      this.accumulatorSeconds + STEP_EPSILON >= SIMULATION_STEP_SECONDS &&
+      steps < MAX_STEPS_PER_UPDATE
+    ) {
+      this.step(input, SIMULATION_STEP_SECONDS);
+      this.accumulatorSeconds = Math.max(
+        0,
+        this.accumulatorSeconds - SIMULATION_STEP_SECONDS,
+      );
+      steps += 1;
+
+      if (this.state.screen !== 'PLAYING') {
+        this.accumulatorSeconds = 0;
+        break;
+      }
+    }
+
+    if (
+      steps === MAX_STEPS_PER_UPDATE &&
+      this.accumulatorSeconds + STEP_EPSILON >= SIMULATION_STEP_SECONDS
+    ) {
+      this.accumulatorSeconds %= SIMULATION_STEP_SECONDS;
+    }
+  }
+
+  private step(input: InputState, dt: number): void {
     this.state.elapsedSeconds += dt;
 
     if (Number.isFinite(this.state.remainingSeconds)) {
