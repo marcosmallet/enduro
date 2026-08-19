@@ -166,9 +166,18 @@ export class InputController {
     const accelerate = this.keyboard.accelerate || this.touch.accelerate || this.gamepad.accelerate;
     const brake = this.keyboard.brake || this.touch.brake || this.gamepad.brake;
     const steer = Math.abs(this.gamepad.steer) >= DEAD_ZONE ? this.gamepad.steer : digitalSteer;
-    this.state.accelerate = this.testInput?.accelerate ?? accelerate;
-    this.state.brake = this.testInput?.brake ?? brake;
-    this.state.steer = this.testInput?.steer ?? steer;
+    const nextAccelerate = this.testInput?.accelerate ?? accelerate;
+    const nextBrake = this.testInput?.brake ?? brake;
+    const nextSteer = this.testInput?.steer ?? steer;
+    const changed =
+      this.state.accelerate !== nextAccelerate ||
+      this.state.brake !== nextBrake ||
+      this.state.steer !== nextSteer;
+
+    this.state.accelerate = nextAccelerate;
+    this.state.brake = nextBrake;
+    this.state.steer = nextSteer;
+    if (changed) this.state.changedAtMs = performance.now();
   }
 
   private emptyGamepad(): NormalizedGamepad {

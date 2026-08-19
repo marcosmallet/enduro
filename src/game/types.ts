@@ -17,6 +17,8 @@ export interface InputState {
   accelerate: boolean;
   brake: boolean;
   steer: number;
+  /** Monotonic browser timestamp for the latest live input edge; omitted by pure simulation callers. */
+  changedAtMs?: number;
 }
 
 export interface TrafficVehicle {
