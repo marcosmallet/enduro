@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "node scripts/run-e2e.mjs",
+    "test:e2e:pwa": "node scripts/run-pwa-e2e.mjs",
     "test:e2e:screenshots": "node scripts/run-e2e.mjs tests/e2e/milestone-six.spec.ts --project=desktop-1080p --grep \"captures the ten canonical\" --update-canonical",
     "check": "npm run lint && npm run test && npm run build"
   },
