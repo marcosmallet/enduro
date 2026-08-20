@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
@@ -94,7 +95,7 @@ const server = createServer(async (request, response) => {
       'cache-control': 'no-cache',
     };
 
-    if (filePath.endsWith(`${join('', 'sw.js')}`)) {
+    if (filePath.endsWith('sw.js')) {
       body = Buffer.concat([
         body,
         Buffer.from(`\n// PWA E2E revision ${serviceWorkerRevision}\n`, 'utf8'),
