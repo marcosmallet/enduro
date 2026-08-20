@@ -75,6 +75,9 @@ jobs:
       - name: End-to-end tests
         run: npm run test:e2e
 
+      - name: Production PWA lifecycle
+        run: npm run test:e2e:pwa
+
   deploy:
     if: github.event_name != 'pull_request'
     needs: [quality, e2e]
